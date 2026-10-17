@@ -84,5 +84,6 @@ WebMarker（中文名：页签）是一个基于 Manifest V3 的浏览器扩展�
 ## 说明
 
 - 数据保存在本地 SQLite（`webannotator.db`），不在云端，卸载扩展**不会**删除数据。
+- 发布包内置**空白数据库模板**（`WebAnnotatorData\webannotator.db`，仅表结构、无任何数据），首次运行选择数据目录后即可直接使用。
 - 卸载请运行根目录 `uninstall.ps1`（仅清理注册与配置，数据目录保留）。
 - 本项目为个人开源作品，按 MIT 协议发布，详见 `LICENSE`。
