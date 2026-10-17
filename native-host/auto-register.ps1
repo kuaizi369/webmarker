@@ -1,11 +1,14 @@
 ﻿# ==================================================================
 # auto-register.ps1
 #
-# 用途：在浏览器"加载已解压的扩展程序"之后，自动检测 WebAnnotator
+# 用途：在浏览器"加载已解压的扩展程序"之后，自动检测 WebAnnotator / 页签(WebMarker)
 #       扩展的真实 ID，并注册 Native Messaging Host（写清单 + 写注册表）。
 #
+# 注册逻辑：扫描主流浏览器（Edge / Chrome），在哪个浏览器找到已加载的扩展 ID，
+#           就注册哪个浏览器；未找到的浏览器直接跳过；相同 ID 只注册一次。
+#
 # 用法：
-#   .\auto-register.ps1                 # 自动检测 Edge / Chrome 中的扩展
+#   .\auto-register.ps1                 # 自动检测 Edge / Chrome 中的扩展，找到哪个注册哪个
 #   .\auto-register.ps1 -EdgeId xxx     # 手动指定 Edge 扩展 ID（覆盖自动检测）
 #   .\auto-register.ps1 -ChromeId xxx   # 手动指定 Chrome 扩展 ID
 #   .\auto-register.ps1 -System         # 注册到系统级（HKLM，需管理员）
@@ -23,8 +26,9 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-# 扩展在 Preferences 中出现的识别名（manifest.json 的 name 字段）
-$EXT_KEYWORD = "WebAnnotator"
+# 扩展在 Preferences 中出现的识别名（manifest.json 的 name 字段）。
+# 项目已更名"页签 WebMarker"；旧名 WebAnnotator 仍需识别（已加载但未重新加载的旧记录），故用多关键词数组匹配。
+$EXT_KEYWORDS = @("WebAnnotator", "WebMarker", "页签")
 
 # ==================================================================
 # 从浏览器配置文件中提取【已加载】的 WebAnnotator 扩展 ID（返回字符串数组）
@@ -69,7 +73,10 @@ function Get-WebAnnotatorIdsFromPreferences {
         if ($null -eq $entry -or $entry.PSObject.Properties.Count -eq 0) { continue }
 
         $serialized = ($entry | ConvertTo-Json -Depth 10 -Compress)
-        $isWA = $serialized -match [regex]::Escape($EXT_KEYWORD)
+        $isWA = $false
+        foreach ($kw in $EXT_KEYWORDS) {
+            if ($serialized -match [regex]::Escape($kw)) { $isWA = $true; break }
+        }
 
         $path = $entry.path
         $pathOk = $false
@@ -80,7 +87,10 @@ function Get-WebAnnotatorIdsFromPreferences {
                 $mf = Join-Path $path "manifest.json"
                 if (Test-Path $mf) {
                     try {
-                        if ([System.IO.File]::ReadAllText($mf).Contains($EXT_KEYWORD)) { $isWA = $true }
+                        $mfText = [System.IO.File]::ReadAllText($mf)
+                        foreach ($kw in $EXT_KEYWORDS) {
+                            if ($mfText.Contains($kw)) { $isWA = $true; break }
+                        }
                     } catch {}
                 }
             }
@@ -133,6 +143,16 @@ foreach ($b in $browsers) {
 # 手动指定时覆盖自动检测结果
 if ($EdgeId)   { $edgeIds   = @($EdgeId) }
 if ($ChromeId) { $chromeIds = @($ChromeId) }
+
+# 汇总：找到哪个浏览器注册哪个，未找到的浏览器直接跳过（不注册）
+foreach ($b in $browsers) {
+    $n = if ($b.Name -eq "Edge") { @($edgeIds).Count } else { @($chromeIds).Count }
+    if ($n -gt 0) {
+        Write-Host "  [$($b.Name)] 检测到 $n 个扩展 ID → 将注册该浏览器" -ForegroundColor Green
+    } else {
+        Write-Host "  [$($b.Name)] 未检测到扩展 ID → 跳过（不注册）" -ForegroundColor DarkGray
+    }
+}
 
 if ($edgeIds.Count -eq 0 -and $chromeIds.Count -eq 0) {
     Write-Host ""
@@ -193,9 +213,34 @@ if (-not (Test-Path $deployedExe)) {
 Write-Host ""
 Write-Host "== 3. 注册 Native Messaging Host ==" -ForegroundColor Cyan
 
+# 逐个浏览器注册：找到哪个注册哪个；未找到的浏览器不传参（不注册）；
+# 相同 ID 只注册一次（跨浏览器重复时跳过，不重复注册）
 $installArgs = @("--install")
-foreach ($id in $edgeIds)   { $installArgs += "--edge-id";   $installArgs += $id }
-foreach ($id in $chromeIds) { $installArgs += "--chrome-id"; $installArgs += $id }
+$registeredIds = @()   # 已注册的扩展 ID（全局去重）
+
+foreach ($id in @($edgeIds | Select-Object -Unique)) {
+    if ($registeredIds -notcontains $id) {
+        Write-Host "  注册 Edge 扩展: $id" -ForegroundColor Green
+        $installArgs += "--edge-id"; $installArgs += $id
+        $registeredIds += $id
+    } else {
+        Write-Host "  Edge 扩展 $id 与已注册 ID 相同 → 跳过（不重复注册）" -ForegroundColor DarkGray
+    }
+}
+foreach ($id in @($chromeIds | Select-Object -Unique)) {
+    if ($registeredIds -notcontains $id) {
+        Write-Host "  注册 Chrome 扩展: $id" -ForegroundColor Green
+        $installArgs += "--chrome-id"; $installArgs += $id
+        $registeredIds += $id
+    } else {
+        Write-Host "  Chrome 扩展 $id 与已注册 ID 相同 → 跳过（不重复注册）" -ForegroundColor DarkGray
+    }
+}
+if ($registeredIds.Count -eq 0) {
+    Write-Host "  没有可注册的扩展 ID，退出。" -ForegroundColor Red
+    pause
+    exit 1
+}
 if ($System) { $installArgs += "--system" }
 
 & $deployedExe @installArgs
