@@ -33,9 +33,17 @@
             <option value="bing">必应（微软）</option>
             <option value="google">谷歌</option>
             <option value="sogou">搜狗</option>
+            <option value="local">页签搜索</option>
           </select>
           <input id="webSearchInput" type="search" placeholder="网络搜索…" autocomplete="off" spellcheck="false" />
           <button id="webSearchBtn" type="button">搜索</button>
+        </div>
+        <!-- 主页动态本地结果（输入关键词时实时显示标注 + 收藏夹，可点击直达） -->
+        <div id="localResults" class="local-results" hidden>
+          <div class="local-title">标注</div>
+          <div id="localAnnotations" class="list"></div>
+          <div class="local-title">收藏夹</div>
+          <div id="localBookmarks" class="list"></div>
         </div>
       </div>
 

@@ -35,6 +35,9 @@ html, body {
   min-height: 100vh;
 }
 
+/* 预留滚动条槽位：搜索结果增多出现滚动条时，页面宽度不跳动（消除抖动感） */
+html { scrollbar-gutter: stable; }
+
 /* ---------- 背景层（右键可换） ---------- */
 .bg-layer {
   position: fixed;
@@ -139,13 +142,13 @@ html, body {
   font-weight: 600;
 }
 
-/* ---------- 内容区（透明，不遮挡背景） ---------- */
+/* ---------- 内容区（透明，不遮挡背景；宽度/间距随窗口缩放，与背景同步） ---------- */
 .content {
   flex: 1;
   min-width: 0;
-  max-width: 900px;
+  max-width: min(900px, 94vw);
   margin: 0 auto;
-  padding: 32px 24px 48px;
+  padding: clamp(20px, 4vw, 32px) clamp(14px, 3vw, 24px) clamp(36px, 6vw, 48px);
   background: transparent;
 }
 
@@ -153,6 +156,7 @@ html, body {
 .view-home {
   min-height: 82vh;
   display: flex;
+  flex-direction: column;    /* 搜索框与结果面板纵向排列，保证对齐 */
   align-items: center;
   justify-content: center;
 }
@@ -160,7 +164,7 @@ html, body {
 .web-search {
   display: flex;
   width: 100%;
-  max-width: 640px;
+  max-width: min(640px, 72vw);
   gap: 0;
   padding: 6px;
   background: var(--glass);
@@ -192,7 +196,7 @@ html, body {
   flex: 1;
   min-width: 0;
   padding: 10px 8px;
-  font-size: 16px;
+  font-size: clamp(14px, 1.8vw, 16px);
   border: none;
   background: transparent;
   color: var(--fg);
@@ -212,6 +216,43 @@ html, body {
 }
 .web-search button:hover { filter: brightness(1.1); }
 
+/* ---------- 主页动态本地结果面板（输入关键词实时显示标注 + 收藏夹） ---------- */
+.local-results {
+  width: 100%;
+  max-width: min(640px, 72vw);
+  margin: 12px auto 0;
+  padding: 10px 12px;
+  background: var(--glass-strong);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  max-height: 58vh;
+  overflow-y: auto;          /* 结果多时面板内部滚动，避免整页抖动 */
+  z-index: 20;               /* 跟随搜索框 fixed 时保持同层 */
+}
+.local-results .local-title {
+  margin: 6px 2px 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.local-results .local-title::before {
+  content: "";
+  width: 4px;
+  height: 12px;
+  border-radius: 2px;
+  background: var(--accent);
+  flex-shrink: 0;
+}
+.local-results .local-title:not(:first-child) { margin-top: 14px; }
+.local-results .list { gap: 6px; }
+.local-results .result-item { padding: 9px 12px; }
+
 /* ---------- 分区 ---------- */
 .section { margin-top: 24px; }
 .section-title {
@@ -229,7 +270,7 @@ html, body {
 .search-box-bar {
   display: flex;
   width: 100%;
-  max-width: 640px;
+  max-width: min(640px, 72vw);
   margin: 0 auto;
   padding: 6px;
   background: var(--glass);
@@ -242,7 +283,7 @@ html, body {
   flex: 1;
   min-width: 0;
   padding: 10px 8px 10px 16px;
-  font-size: 16px;
+  font-size: clamp(14px, 1.8vw, 16px);
   border: none;
   background: transparent;
   color: var(--fg);
@@ -305,14 +346,17 @@ html, body {
   color: var(--muted);
   display: flex;
   flex-wrap: wrap;
-  gap: 6px 10px;
+  gap: 4px 10px;
   align-items: center;
 }
 .result-item .ri-url {
+  flex-basis: 100%;           /* URL 单独一行，避免与标签/时间挤在一起 */
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 100%;
+  font-size: 11px;
+  opacity: 0.85;
 }
 .ri-tags { display: inline-flex; flex-wrap: wrap; gap: 4px; }
 .ri-tag {

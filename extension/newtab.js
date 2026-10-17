@@ -280,12 +280,23 @@ const WebSearchModule = {
   _startY: 0,
   _origLeft: 0,
   _origTop: 0,
+  // 主页动态本地结果（标注 + 收藏夹）
+  localResults: document.getElementById("localResults"),
+  localAnnotations: document.getElementById("localAnnotations"),
+  localBookmarks: document.getElementById("localBookmarks"),
+  LOCAL_LIMIT: 8,       // 每源最多展示条数（面板限高，防撑爆）
+  _localTimer: null,
 
   async init() {
     const go = () => this.search();
     this.btn.addEventListener("click", go);
     this.input.addEventListener("keydown", (e) => {
       if (e.key === "Enter") { e.preventDefault(); go(); }
+    });
+    // 输入时动态搜索标注与收藏夹（防抖，与标签页搜索一致）
+    this.input.addEventListener("input", () => {
+      clearTimeout(this._localTimer);
+      this._localTimer = setTimeout(() => this.doLocalSearch(this.input.value), 250);
     });
 
     // 恢复上次拖动位置（无记录时保持默认居中）
@@ -301,10 +312,67 @@ const WebSearchModule = {
     this.bindDrag();
   },
 
+  /** 主页动态本地搜索：标注 + 收藏夹，结果面板实时显示（四态：空/单/多/全） */
+  async doLocalSearch(raw) {
+    const q = (raw || "").trim().slice(0, 200);
+    if (q === "") {
+      this.localResults.hidden = true;
+      this.localAnnotations.innerHTML = "";
+      this.localBookmarks.innerHTML = "";
+      return;
+    }
+    this.localResults.hidden = false;
+    this.syncPanel();   // 显示前确保与搜索框对齐（含拖动过的 fixed 场景）
+    renderLoading(this.localAnnotations, "搜索标注中…");
+    renderLoading(this.localBookmarks, "搜索收藏夹中…");
+
+    const [annoResp, bmResp] = await Promise.all([
+      sendAction({ action: "search", query: q, limit: this.LOCAL_LIMIT, offset: 0 }, "主页搜索标注"),
+      bookmarksSearch(q),
+    ]);
+
+    // 标注
+    if (isHostFailure(annoResp)) {
+      handleHostFailure(this.localAnnotations, annoResp);
+    } else if (!annoResp.success) {
+      renderModuleError(this.localAnnotations, annoResp.error || "标注搜索失败");
+    } else {
+      const results = (annoResp.data && annoResp.data.results) || [];
+      this.localAnnotations.innerHTML = "";
+      if (results.length === 0) {
+        renderEmpty(this.localAnnotations, "标注中未找到「" + q + "」");
+      } else {
+        results.forEach((item) => this.localAnnotations.appendChild(createAnnotationItem(item)));
+      }
+    }
+
+    // 收藏夹
+    if (!bmResp.success) {
+      renderModuleError(this.localBookmarks, "收藏夹不可用", null, null);
+    } else {
+      const nodes = (bmResp.nodes || []).filter((n) => n.url && /^https?:\/\//i.test(n.url)).slice(0, this.LOCAL_LIMIT);
+      this.localBookmarks.innerHTML = "";
+      if (nodes.length === 0) {
+        renderEmpty(this.localBookmarks, "收藏夹中未找到「" + q + "」");
+      } else {
+        nodes.forEach((n) => this.localBookmarks.appendChild(SearchModule.createBookmarkItem(n)));
+      }
+    }
+  },
+
   search() {
     const q = (this.input.value || "").trim();
     if (!q) { this.input.focus(); return; }
     const engine = this.select.value || "baidu";
+
+    // 页签搜索：即标签页的"搜索标注与收藏夹"本地搜索
+    if (engine === "local") {
+      NavModule.switchTo("tags");
+      SearchModule.input.value = q;
+      SearchModule.onInput(q);
+      return;
+    }
+
     const url = (ENGINES[engine] || ENGINES.baidu).url + encodeURIComponent(q);
     openUrl(url);
   },
@@ -314,6 +382,28 @@ const WebSearchModule = {
     this.box.classList.add("pinned");
     this.box.style.left = left + "px";
     this.box.style.top = top + "px";
+    this.syncPanel();
+  },
+
+  /** 结果面板与搜索框对齐：搜索框被拖走(fixed)时面板跟随其底部；未拖走时回到文档流 */
+  syncPanel() {
+    const panel = this.localResults;
+    if (this.box.classList.contains("pinned")) {
+      const rect = this.box.getBoundingClientRect();
+      panel.style.position = "fixed";
+      panel.style.left = rect.left + "px";
+      panel.style.top = (rect.bottom + 10) + "px";
+      panel.style.width = this.box.offsetWidth + "px";
+      panel.style.maxWidth = this.box.offsetWidth + "px";
+      panel.style.margin = "0";
+    } else {
+      panel.style.position = "";
+      panel.style.left = "";
+      panel.style.top = "";
+      panel.style.width = "";
+      panel.style.maxWidth = "";
+      panel.style.margin = "";
+    }
   },
 
   /** 鼠标左键拖动：容器空白/边框区为手柄，输入/下拉/按钮上不触发 */
@@ -340,6 +430,7 @@ const WebSearchModule = {
       const top = Math.max(8, Math.min(this._origTop + (e.clientY - this._startY), window.innerHeight - h - 8));
       this.box.style.left = left + "px";
       this.box.style.top = top + "px";
+      this.syncPanel();   // 拖动中面板实时跟随
     });
 
     document.addEventListener("mouseup", () => {
@@ -348,6 +439,7 @@ const WebSearchModule = {
       this.box.classList.remove("dragging");
       const left = parseFloat(this.box.style.left) || this._origLeft;
       const top = parseFloat(this.box.style.top) || this._origTop;
+      this.syncPanel();
       try {
         chrome.storage.local.set({ [this.POS_KEY]: { left: left, top: top } });
       } catch (err) {
