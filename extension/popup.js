@@ -110,6 +110,7 @@ function initDomRefs() {
   dom.statusText = document.getElementById("status-text");
   dom.installGuide = document.getElementById("install-guide");
   dom.guideRetryBtn = document.getElementById("guide-retry-btn");
+  dom.dataPathBtn = document.getElementById("data-path-btn");
   dom.configGuide = document.getElementById("config-guide");
   dom.dataPathInput = document.getElementById("data-path-input");
   dom.configHint = document.getElementById("config-hint");
@@ -1359,13 +1360,27 @@ function hideInstallGuide() {
   dom.installGuide.hidden = true;
 }
 
-/** 显示首次配置引导（HOST_NOT_INITIALIZED） */
+/** 显示配置引导（HOST_NOT_INITIALIZED 或用户主动打开设置） */
 function showConfigGuide() {
   dom.configGuide.hidden = false;
   // 填充默认路径建议
   if (!dom.dataPathInput.value) {
     dom.dataPathInput.value = getDefaultDataPath();
   }
+}
+
+/** 打开数据目录设置：先读取当前路径预填，再显示设置弹窗 */
+async function openDataPathSettings() {
+  try {
+    const resp = await sendAction({ action: "getConfig" }, "读取配置");
+    if (resp.success && resp.data && resp.data.dataPath) {
+      dom.dataPathInput.value = resp.data.dataPath;
+    }
+  } catch (err) {
+    // 读取失败不阻塞，保留默认值建议
+  }
+  dom.configHint.textContent = "";
+  showConfigGuide();
 }
 
 /** 隐藏配置引导 */
@@ -1400,7 +1415,7 @@ async function confirmConfig() {
   const originalText = dom.configConfirmBtn.textContent;
   dom.configConfirmBtn.textContent = "配置中...";
 
-  const resp = await sendAction({ action: "setConfig", dataPath }, "配置路径");
+  const resp = await sendAction({ action: "setConfig", dataPath, migrate: true }, "配置路径");
 
   dom.configConfirmBtn.disabled = false;
   dom.configConfirmBtn.textContent = originalText;
@@ -1465,6 +1480,7 @@ function bindEvents() {
   });
 
   // 配置引导
+  dom.dataPathBtn.addEventListener("click", openDataPathSettings);
   dom.configConfirmBtn.addEventListener("click", confirmConfig);
 
   // 删除确认

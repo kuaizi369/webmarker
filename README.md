@@ -35,7 +35,8 @@ WebMarker（中文名：页签）是一个基于 Manifest V3 的浏览器扩展�
    - Edge：打开 `edge://extensions` → 左侧开启「开发人员模式」→「加载解压缩的扩展」→ 选择 `WebMarker\extension` 文件夹。
 3. **注册本地程序**：右键 `native-host\auto-register.ps1` →「使用 PowerShell 运行」（或打开 PowerShell 进入该目录执行 `.\auto-register.ps1`）。脚本会自动检测扩展 ID 并注册，看到「注册成功」即可。
    - 若 PowerShell 策略拦截，先执行：`Set-ExecutionPolicy -Scope Process Bypass` 再运行。
-4. **设置数据目录**：点浏览器右上角「页签」图标 → 首次使用按提示选择数据存放目录（建议保持默认：`WebMarker\WebAnnotatorData`，与扩展同文件夹便于迁移）。
+4. **数据目录（无需手动选择）**：首次使用会自动使用插件文件夹下的 `WebAnnotatorData`（即 `WebMarker\WebAnnotatorData`），无需手动设置，且随整个插件文件夹迁移。
+   - 如需自定义存放路径：点浏览器右上角「页签」图标 → 右上角 ⚙ 按钮 → 输入新路径 →「确认并保存」（原数据会自动迁移到新位置）。
 
 完成。打开任意网页即可标注。
 
