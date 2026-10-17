@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>页签 WebMarker</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+
+    <!-- ==================== 标题栏 ==================== -->
+    <header class="header">
+      <span class="header-title">页签 WebMarker</span>
+      <button id="theme-toggle" class="theme-toggle-btn" title="切换主题" aria-label="切换明暗主题">
+        <span class="theme-icon-light">☀</span>
+        <span class="theme-icon-dark">☾</span>
+      </button>
+    </header>
+
+    <!-- ==================== 当前网页信息区 ==================== -->
+    <section class="page-info-section" id="page-info-section">
+      <div class="page-info-row">
+        <span class="info-label">标题</span>
+        <span class="info-value" id="page-title" title="">—</span>
+      </div>
+      <div class="page-info-row">
+        <span class="info-label">URL</span>
+        <span class="info-value url-value" id="page-url" title="">—</span>
+      </div>
+    </section>
+
+    <!-- ==================== 标签编辑区 ==================== -->
+    <section class="tags-section" id="tags-section">
+      <div class="section-label">标签</div>
+      <div class="tags-chip-container" id="tags-chip-container">
+        <!-- 标签 chip 动态插入 -->
+        <div class="tags-empty-hint" id="tags-empty-hint">暂无标签，在下方输入添加</div>
+      </div>
+      <div class="tag-input-wrapper">
+        <input
+          type="text"
+          id="tag-input"
+          class="tag-input"
+          placeholder="输入标签名称，回车添加"
+          maxlength="30"
+          autocomplete="off">
+        <div class="tag-autocomplete-dropdown" id="tag-autocomplete" hidden>
+          <!-- 自动补全候选项动态插入 -->
+        </div>
+      </div>
+    </section>
+
+    <!-- ==================== 备注编辑区 ==================== -->
+    <section class="note-section" id="note-section">
+      <div class="section-label">备注</div>
+      <textarea
+        id="note-input"
+        class="note-input"
+        rows="3"
+        placeholder="在此输入备注..."
+        maxlength="10000"></textarea>
+    </section>
+
+    <!-- ==================== 操作区（始终可见） ==================== -->
+    <section class="action-section" id="action-section">
+      <button id="save-btn" class="btn btn-primary" title="保存标注">保存</button>
+      <button id="search-btn" class="btn btn-secondary" title="搜索标注">搜索</button>
+      <button id="tag-mgr-btn" class="btn btn-secondary" title="标签管理">标签管理</button>
+    </section>
+
+    <!-- ==================== 搜索栏（默认隐藏） ==================== -->
+    <section class="search-bar-section" id="search-bar-section" hidden>
+      <input
+        type="text"
+        id="search-input"
+        class="search-input"
+        placeholder="输入关键词搜索 URL/标题/备注/标签..."
+        autocomplete="off">
+    </section>
+
+    <!-- ==================== 结果区（独立滚动） ==================== -->
+    <section class="result-section" id="result-section">
+      <div class="result-header" id="result-header">
+        <span class="result-title" id="result-title">结果</span>
+        <button class="result-close-btn" id="result-close-btn" title="关闭结果" hidden>✕</button>
+      </div>
+      <div class="result-list" id="result-list">
+        <!-- 搜索结果 / 标签管理列表 / 筛选结果 动态插入 -->
+      </div>
+      <div class="result-footer" id="result-footer" hidden>
+        <button class="btn btn-text" id="load-more-btn">加载更多</button>
+      </div>
+    </section>
+
+    <!-- ==================== 状态提示区 ==================== -->
+    <div class="status-bar" id="status-bar" hidden>
+      <span class="status-text" id="status-text"></span>
+    </div>
+
+    <!-- ==================== 安装引导（覆盖层） ==================== -->
+    <div class="overlay-guide" id="install-guide" hidden>
+      <div class="guide-card">
+        <div class="guide-icon">⚠</div>
+        <h3 class="guide-title">未检测到本地程序</h3>
+        <p class="guide-desc">请先安装并运行页签(WebMarker) 配套本地程序，才能进行标注存储。</p>
+        <ol class="guide-steps">
+          <li>运行安装脚本 <code>install.ps1</code></li>
+          <li>在 <code>chrome://extensions</code> 加载扩展</li>
+          <li>重启浏览器后重试</li>
+        </ol>
+        <button class="btn btn-primary" id="guide-retry-btn">重试连接</button>
+      </div>
+    </div>
+
+    <!-- ==================== 首次配置引导（数据路径） ==================== -->
+    <div class="overlay-guide" id="config-guide" hidden>
+      <div class="guide-card">
+        <div class="guide-icon">⚙</div>
+        <h3 class="guide-title">首次使用配置</h3>
+        <p class="guide-desc">请选择数据存放路径，标注数据将保存在该路径下的 SQLite 数据库中。</p>
+        <div class="config-path-input-row">
+          <input
+            type="text"
+            id="data-path-input"
+            class="data-path-input"
+            placeholder="例如: C:\Users\YourName\WebAnnotatorData">
+        </div>
+        <p class="guide-hint" id="config-hint"></p>
+        <button class="btn btn-primary" id="config-confirm-btn">确认并保存</button>
+      </div>
+    </div>
+
+    <!-- ==================== 删除确认弹窗 ==================== -->
+    <div class="overlay-guide" id="delete-confirm" hidden>
+      <div class="guide-card">
+        <div class="guide-icon">🗑</div>
+        <h3 class="guide-title">确认删除标签</h3>
+        <p class="guide-desc" id="delete-confirm-desc"></p>
+        <div class="guide-btn-row">
+          <button class="btn btn-secondary" id="delete-cancel-btn">取消</button>
+          <button class="btn btn-danger" id="delete-ok-btn">确认删除</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== 预览弹窗（绝对定位，动态位置） ==================== -->
+    <div class="preview-popup" id="preview-popup" hidden>
+      <div class="preview-header">
+        <span class="preview-title" id="preview-title">预览</span>
+        <button class="preview-close-btn" id="preview-close-btn" title="关闭预览">✕</button>
+      </div>
+      <div class="preview-body" id="preview-body">
+        <!-- 预览内容动态插入 -->
+      </div>
+    </div>
+
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

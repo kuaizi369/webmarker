@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>页签 WebMarker 管理面板</title>
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="options-container">
+
+    <!-- ==================== 顶栏 ==================== -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <span class="app-logo">◧</span>
+        <span class="app-title">页签 WebMarker</span>
+        <span class="app-subtitle">管理面板</span>
+      </div>
+      <div class="topbar-right">
+        <button id="theme-toggle" class="icon-btn" title="切换主题" aria-label="切换明暗主题">☾</button>
+      </div>
+    </header>
+
+    <!-- ==================== 导航标签 ==================== -->
+    <nav class="nav-tabs" id="nav-tabs" aria-label="视图导航">
+      <button class="nav-tab" data-view="home" title="首页概览">🏠 首页</button>
+      <button class="nav-tab" data-view="search" title="搜索全部标注">🔍 搜索</button>
+      <button class="nav-tab" data-view="manage" title="标签管理">🏷 标签管理</button>
+    </nav>
+
+    <!-- ==================== 视图容器 ==================== -->
+    <main class="view-container">
+
+      <!-- 首页视图 -->
+      <section class="view" id="view-home">
+        <div class="stat-cards" id="home-stats">
+          <!-- 统计卡片动态填充 -->
+        </div>
+        <div class="view-section">
+          <div class="view-section-header">
+            <span class="view-section-title">最近标注</span>
+            <button class="link-btn" id="home-view-all">查看全部 →</button>
+          </div>
+          <div class="list" id="home-recent"><!-- 最近标注列表 --></div>
+        </div>
+      </section>
+
+      <!-- 搜索视图 -->
+      <section class="view" id="view-search" hidden>
+        <div class="search-box">
+          <input
+            type="text"
+            id="search-input"
+            class="search-input"
+            placeholder="输入关键词搜索 URL / 标题 / 备注 / 标签..."
+            autocomplete="off">
+        </div>
+        <div class="view-section">
+          <div class="view-section-header">
+            <span class="view-section-title" id="search-title">搜索结果</span>
+            <span class="count-badge" id="search-count"></span>
+          </div>
+          <div class="list" id="search-results"></div>
+          <div class="load-more-wrap" id="search-more-wrap" hidden>
+            <button class="btn btn-secondary" id="search-more-btn">加载更多</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 标签管理视图 -->
+      <section class="view" id="view-manage" hidden>
+        <div class="breadcrumb" id="manage-breadcrumb" hidden>
+          <button class="link-btn" id="back-to-tags">← 返回标签列表</button>
+        </div>
+        <div class="view-section">
+          <div class="view-section-header">
+            <span class="view-section-title" id="manage-title">全部标签</span>
+            <span class="count-badge" id="manage-count"></span>
+          </div>
+          <div class="tag-list" id="tag-list"><!-- 标签列表 / 筛选结果 --></div>
+          <div class="load-more-wrap" id="manage-more-wrap" hidden>
+            <button class="btn btn-secondary" id="manage-more-btn">加载更多</button>
+          </div>
+        </div>
+      </section>
+
+    </main>
+
+    <!-- ==================== 状态条 ==================== -->
+    <div class="status-bar" id="status-bar" hidden>
+      <span id="status-text"></span>
+    </div>
+
+    <!-- ==================== 删除确认弹窗 ==================== -->
+    <div class="modal-mask" id="delete-confirm" hidden>
+      <div class="modal-card">
+        <div class="modal-icon">🗑</div>
+        <h3 class="modal-title" id="delete-confirm-title">确认删除</h3>
+        <p class="modal-desc" id="delete-confirm-desc"></p>
+        <div class="modal-btn-row">
+          <button class="btn btn-secondary" id="delete-cancel-btn">取消</button>
+          <button class="btn btn-danger" id="delete-ok-btn">确认删除</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>

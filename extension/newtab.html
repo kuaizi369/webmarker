@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>新标签页</title>
+  <link rel="stylesheet" href="newtab.css" />
+</head>
+<body>
+  <!-- 背景层（背景图片 / 右键换背景） -->
+  <div id="bgLayer" class="bg-layer" aria-hidden="true"></div>
+
+  <!-- 全局错误条（host 未连接等） -->
+  <div id="errorBar" class="error-bar" hidden></div>
+
+  <!-- 左栏展开按钮（左栏自动隐藏后用于唤出） -->
+  <button id="navToggle" class="nav-toggle" type="button" title="打开/收起导航" aria-label="打开/收起导航">☰</button>
+
+  <div class="layout">
+    <!-- 左侧导航栏（默认隐藏，点击按钮唤出） -->
+    <nav id="sidebar" class="sidebar collapsed" aria-label="页面导航">
+      <div class="brand">页签 WebMarker</div>
+      <div class="nav-item active" data-view="home" role="button" tabindex="0">主页</div>
+      <div class="nav-item" data-view="tags" role="button" tabindex="0">标签页</div>
+    </nav>
+
+    <main class="content">
+      <!-- ============ 主页视图（极简：仅网络搜索框，贴合背景） ============ -->
+      <div id="viewHome" class="view-home">
+        <div class="web-search">
+          <select id="engineSelect" title="选择搜索引擎">
+            <option value="baidu" selected>百度</option>
+            <option value="bing">必应（微软）</option>
+            <option value="google">谷歌</option>
+            <option value="sogou">搜狗</option>
+          </select>
+          <input id="webSearchInput" type="search" placeholder="网络搜索…" autocomplete="off" spellcheck="false" />
+          <button id="webSearchBtn" type="button">搜索</button>
+        </div>
+      </div>
+
+      <!-- ============ 标签页视图（标注/收藏夹搜索 + 标签墙居右；最近标注默认隐藏） ============ -->
+      <div id="viewTags" hidden>
+        <!-- 标注 / 收藏夹搜索框（同主页网络搜索框样式，居中偏上） -->
+        <div class="search-box">
+          <h2 class="section-title">搜索标注与收藏夹</h2>
+          <div class="search-box-bar">
+            <input id="searchInput" type="search" placeholder="输入关键词，搜索标注与浏览器收藏夹…" autocomplete="off" spellcheck="false" />
+            <button id="searchBtn" type="button">搜索</button>
+          </div>
+        </div>
+        <p id="searchHint" class="search-hint" hidden></p>
+
+        <!-- 最近标注（默认隐藏，输入关键词后显示搜索结果） -->
+        <section id="recentSection" class="section" hidden>
+          <h2 class="section-title">最近标注</h2>
+          <div id="recentList" class="list"></div>
+        </section>
+
+        <!-- 搜索结果（标注 + 收藏夹） -->
+        <section id="resultSection" class="section" hidden>
+          <h2 class="section-title">搜索结果</h2>
+          <div id="resultAnnotations" class="list"></div>
+          <div id="resultBookmarks" class="list"></div>
+        </section>
+
+        <!-- 标签墙（居右） -->
+        <section class="section tag-wall-area">
+          <h2 class="view-title">标签墙</h2>
+          <div id="tagWall" class="tag-wall"></div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- 右键菜单（背景操作） -->
+  <div id="ctxMenu" class="ctx-menu" hidden></div>
+
+  <script src="newtab.js"></script>
+</body>
+</html>
