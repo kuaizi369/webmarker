@@ -220,7 +220,7 @@ html { scrollbar-gutter: stable; }
 .local-results {
   width: 100%;
   max-width: min(640px, 72vw);
-  margin: 3px auto 0;         /* 紧贴搜索框下方，几乎无间隙 */
+  margin: 6px auto 0;         /* 搜索框与结果面板间距 */
   padding: 10px 12px;
   background: var(--glass-strong);
   border: 1px solid var(--border);
