@@ -66,8 +66,7 @@
     <!-- ==================== 操作区（始终可见） ==================== -->
     <section class="action-section" id="action-section">
       <button id="save-btn" class="btn btn-primary" title="保存标注">保存</button>
-      <button id="search-btn" class="btn btn-secondary" title="搜索标注">搜索</button>
-      <button id="tag-mgr-btn" class="btn btn-secondary" title="标签管理">标签管理</button>
+      <button id="panel-mgr-btn" class="btn btn-secondary" title="打开管理面板">面板管理</button>
     </section>
 
     <!-- ==================== 搜索栏（默认隐藏） ==================== -->
@@ -128,7 +127,10 @@
             placeholder="例如: C:\Users\YourName\WebAnnotatorData">
         </div>
         <p class="guide-hint" id="config-hint"></p>
-        <button class="btn btn-primary" id="config-confirm-btn">确认并保存</button>
+        <div class="guide-btn-row">
+          <button class="btn btn-secondary" id="config-cancel-btn">取消</button>
+          <button class="btn btn-primary" id="config-confirm-btn">确认并保存</button>
+        </div>
       </div>
     </div>
 

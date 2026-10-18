@@ -30,7 +30,9 @@
 
     "activeTab",
     "storage",
-    "bookmarks"
+    "bookmarks",
+
+    "management"
   ],
 
   "host_permissions": [],

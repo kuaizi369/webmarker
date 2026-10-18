@@ -1,4 +1,6 @@
-﻿<#
+﻿# 日常安装推荐使用 auto-register.ps1（自动检测浏览器中已加载的扩展 ID，找到哪个注册哪个）；
+# 本脚本用于手动指定扩展 ID / 自定义安装路径的场景。
+<#
 .SYNOPSIS
     WebAnnotator 安装脚本 - 部署本地程序并注册 Native Messaging Host。
 

@@ -432,7 +432,7 @@ html, body {
 }
 
 #save-btn { flex: 1; }
-#search-btn, #tag-mgr-btn { flex-shrink: 0; }
+#panel-mgr-btn { flex-shrink: 0; }
 
 /* ================================================================== */
 /* 搜索栏                                                              */

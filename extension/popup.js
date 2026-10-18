@@ -95,8 +95,7 @@ function initDomRefs() {
   dom.noteSection = document.getElementById("note-section");
   dom.noteInput = document.getElementById("note-input");
   dom.saveBtn = document.getElementById("save-btn");
-  dom.searchBtn = document.getElementById("search-btn");
-  dom.tagMgrBtn = document.getElementById("tag-mgr-btn");
+  dom.panelMgrBtn = document.getElementById("panel-mgr-btn");
   dom.searchBarSection = document.getElementById("search-bar-section");
   dom.searchInput = document.getElementById("search-input");
   dom.resultSection = document.getElementById("result-section");
@@ -115,6 +114,7 @@ function initDomRefs() {
   dom.dataPathInput = document.getElementById("data-path-input");
   dom.configHint = document.getElementById("config-hint");
   dom.configConfirmBtn = document.getElementById("config-confirm-btn");
+  dom.configCancelBtn = document.getElementById("config-cancel-btn");
   dom.deleteConfirm = document.getElementById("delete-confirm");
   dom.deleteConfirmDesc = document.getElementById("delete-confirm-desc");
   dom.deleteCancelBtn = document.getElementById("delete-cancel-btn");
@@ -1453,10 +1453,9 @@ function bindEvents() {
   // 保存
   dom.saveBtn.addEventListener("click", saveAnnotation);
 
-  // 搜索 / 标签管理：打开全页管理面板（options.html）
-  // 标注多时 popup 空间有限，改用独立页面进行搜索与管理（用户需求）
-  dom.searchBtn.addEventListener("click", () => openOptionsPage("search"));
-  dom.tagMgrBtn.addEventListener("click", () => openOptionsPage("manage"));
+  // 面板管理：打开全页管理面板（options.html）
+  // 搜索 / 标签管理 / 导入导出 / 数据统计 均在管理面板内进行（用户需求）
+  dom.panelMgrBtn.addEventListener("click", () => openOptionsPage());
   dom.searchInput.addEventListener("input", onSearchInput);
 
   // 结果区关闭
@@ -1482,6 +1481,7 @@ function bindEvents() {
   // 配置引导
   dom.dataPathBtn.addEventListener("click", openDataPathSettings);
   dom.configConfirmBtn.addEventListener("click", confirmConfig);
+  dom.configCancelBtn.addEventListener("click", hideConfigGuide);
 
   // 删除确认
   dom.deleteCancelBtn.addEventListener("click", hideDeleteConfirm);

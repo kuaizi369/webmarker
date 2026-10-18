@@ -141,8 +141,8 @@ foreach ($b in $browsers) {
 }
 
 # 手动指定时覆盖自动检测结果
-if ($EdgeId)   { $edgeIds   = @($EdgeId) }
-if ($ChromeId) { $chromeIds = @($ChromeId) }
+if ($EdgeId)   { $edgeIds   = @($EdgeId);   Write-Host "  [Edge]   使用手动指定的扩展 ID: $EdgeId" -ForegroundColor Cyan }
+if ($ChromeId) { $chromeIds = @($ChromeId); Write-Host "  [Chrome] 使用手动指定的扩展 ID: $ChromeId" -ForegroundColor Cyan }
 
 # 汇总：找到哪个浏览器注册哪个，未找到的浏览器直接跳过（不注册）
 foreach ($b in $browsers) {
@@ -154,7 +154,7 @@ foreach ($b in $browsers) {
     }
 }
 
-if ($edgeIds.Count -eq 0 -and $chromeIds.Count -eq 0) {
+if (@($edgeIds).Count -eq 0 -and @($chromeIds).Count -eq 0) {
     Write-Host ""
     Write-Host "未检测到【已加载】的 WebAnnotator 扩展。" -ForegroundColor Yellow
     Write-Host "（即使浏览器里留有旧 ID 的残留记录，也不会注册——那不能证明扩展已加载。）" -ForegroundColor DarkGray
@@ -195,7 +195,14 @@ if (-not (Test-Path $deployedExe)) {
     }
     if ($sourceExe) {
         New-Item -ItemType Directory -Path $installDir -Force | Out-Null
-        Copy-Item $sourceExe $deployedExe -Force
+        try {
+            Copy-Item $sourceExe $deployedExe -Force
+        } catch {
+            Write-Host "  复制失败：$($_.Exception.Message)" -ForegroundColor Red
+            Write-Host "  本地程序可能正被浏览器占用，请关闭所有浏览器窗口后重试。" -ForegroundColor Red
+            pause
+            exit 1
+        }
         Write-Host "  已从 $sourceExe 部署到 $installDir"
     } else {
         Write-Host "  未找到 WebAnnotatorHost.exe。" -ForegroundColor Red
@@ -246,6 +253,7 @@ if ($System) { $installArgs += "--system" }
 & $deployedExe @installArgs
 if ($LASTEXITCODE -ne 0) {
     Write-Host "  注册失败（exit=$LASTEXITCODE）" -ForegroundColor Red
+    pause
     exit 1
 }
 
