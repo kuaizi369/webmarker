@@ -66,6 +66,9 @@ function initDomRefs() {
   dom.homeStats = document.getElementById("home-stats");
   dom.homeRecent = document.getElementById("home-recent");
   dom.homeViewAll = document.getElementById("home-view-all");
+  dom.exportCsvBtn = document.getElementById("export-csv-btn");
+  dom.importCsvBtn = document.getElementById("import-csv-btn");
+  dom.importCsvFile = document.getElementById("import-csv-file");
   dom.searchInput = document.getElementById("search-input");
   dom.searchTitle = document.getElementById("search-title");
   dom.searchCount = document.getElementById("search-count");
@@ -439,6 +442,76 @@ function createStatCard(value, label) {
 }
 
 /* ================================================================== */
+/* 导入 / 导出 CSV                                                     */
+/* ================================================================== */
+
+/** 导出：向 host 取全部标注 CSV，加 UTF-8 BOM 后下载为文件。 */
+async function onExportCsv() {
+  showStatus("正在导出...", "info", 0);
+  const resp = await sendAction({ action: "exportCsv" }, "导出数据");
+  if (!resp.success || !resp.data || typeof resp.data.csv !== "string") {
+    showStatus("导出失败：" + (resp.error || "未知错误"), "error");
+    return;
+  }
+
+  // 前置 BOM，Excel 直接打开中文不乱码
+  const blob = new Blob(["\uFEFF" + resp.data.csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "webmarker-annotations-" + new Date().toISOString().slice(0, 10) + ".csv";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+
+  const count = Number(resp.data.count) || 0;
+  showStatus(`已导出 ${count} 条标注到 CSV`, "success");
+}
+
+/** 导入：选择文件后读取文本并提交 host（导入前会确认 + host 自动备份数据库）。 */
+function onImportCsvFileSelected() {
+  const file = dom.importCsvFile.files && dom.importCsvFile.files[0];
+  if (!file) return;
+  dom.importCsvFile.value = ""; // 允许再次选择同一文件
+
+  const reader = new FileReader();
+  reader.onload = async () => {
+    const csv = String(reader.result || "");
+    if (!csv.trim()) {
+      showStatus("所选文件为空", "error");
+      return;
+    }
+
+    const ok = window.confirm(
+      `将导入「${file.name}」中的数据（${csv.trim().split(/\r?\n/).length} 行）。\n\n` +
+      `合并规则：URL 已存在的标注将被更新，不存在的将新增；标签按原样合并。\n` +
+      `导入前会自动备份数据库（可随时还原）。\n\n确定继续吗？`
+    );
+    if (!ok) return;
+
+    showStatus("正在导入...", "info", 0);
+    const resp = await sendAction({ action: "importCsv", csv }, "导入数据");
+    if (resp.success && resp.data) {
+      const imported = Number(resp.data.imported) || 0;
+      const skipped = Number(resp.data.skipped) || 0;
+      const errors = Array.isArray(resp.data.errors) ? resp.data.errors : [];
+      let msg = `导入完成：成功 ${imported} 条，跳过 ${skipped} 条`;
+      if (errors.length > 0) {
+        msg += `（详情见浏览器控制台）`;
+        console.warn("[WebAnnotator] 导入跳过/失败明细：", errors);
+      }
+      showStatus(msg, skipped > 0 ? "warn" : "success", 4000);
+      loadHome(); // 刷新统计与最近标注
+    } else {
+      showStatus("导入失败：" + (resp.error || "未知错误"), "error");
+    }
+  };
+  reader.onerror = () => showStatus("读取文件失败", "error");
+  reader.readAsText(file, "utf-8");
+}
+
+/* ================================================================== */
 /* 搜索视图                                                           */
 /* ================================================================== */
 
@@ -726,6 +799,9 @@ function bindEvents() {
 
   // 首页
   dom.homeViewAll.addEventListener("click", () => navigate("search"));
+  dom.exportCsvBtn.addEventListener("click", onExportCsv);
+  dom.importCsvBtn.addEventListener("click", () => dom.importCsvFile.click());
+  dom.importCsvFile.addEventListener("change", onImportCsvFileSelected);
 
   // 搜索
   dom.searchInput.addEventListener("input", onSearchInput);
@@ -756,6 +832,20 @@ function bindEvents() {
 /* ================================================================== */
 
 async function init() {
+  // 卸载脚本触发的自卸载（uninstall.ps1 打开 options.html#uninstall）：
+  // 必须放在任何 host 请求之前处理，避免移除瞬间出现连接错误
+  const bootHash = location.hash.replace(/^#/, "").split("?")[0];
+  if (bootHash === "uninstall") {
+    document.title = "正在移除页签扩展…";
+    document.body.innerHTML = '<div style="padding:48px 40px;font-size:15px;">正在从浏览器移除「页签 WebMarker」扩展…</div>';
+    chrome.management.uninstallSelf({ showConfirmDialog: false }, () => {
+      const err = chrome.runtime.lastError;
+      if (err) {
+        document.body.innerHTML = '<div style="padding:48px 40px;font-size:15px;">自动移除失败：' + err.message + '<br/><br/>请到扩展管理页（chrome://extensions）手动移除。</div>';
+      }
+    });
+    return;
+  }
   initDomRefs();
   bindEvents();
   setThemeMode(THEME_FOLLOW_SYSTEM);

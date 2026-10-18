@@ -38,6 +38,17 @@
         </div>
         <div class="view-section">
           <div class="view-section-header">
+            <span class="view-section-title">导入 / 导出</span>
+          </div>
+          <div class="io-actions">
+            <button class="btn btn-secondary" id="export-csv-btn" type="button">⬇ 导出 CSV</button>
+            <button class="btn btn-secondary" id="import-csv-btn" type="button">⬆ 导入 CSV</button>
+            <span class="io-hint">导出为 CSV（Excel 可直接打开）；导入按 URL 合并（已存在则更新），导入前自动备份数据库</span>
+            <input type="file" id="import-csv-file" accept=".csv,text/csv" hidden />
+          </div>
+        </div>
+        <div class="view-section">
+          <div class="view-section-header">
             <span class="view-section-title">最近标注</span>
             <button class="link-btn" id="home-view-all">查看全部 →</button>
           </div>

@@ -230,6 +230,19 @@ html, body {
   background: var(--accent-light);
 }
 
+/* ---------- 导入 / 导出（首页） ---------- */
+.io-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 4px 0;
+}
+.io-hint {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
 /* ---------- 列表 ---------- */
 .list {
   display: flex;
