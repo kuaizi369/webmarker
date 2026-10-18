@@ -1,0 +1,28 @@
+# ===== 用户数据（绝不提交，首次运行由本地程序自动创建） =====
+WebAnnotatorData/
+
+# ===== Native Messaging 本机清单（install.ps1 / auto-register.ps1 自动生成，含本机绝对路径与扩展 ID，不入库） =====
+com.codearts.webannotator.json
+
+# ===== 设计预览产物 =====
+design-preview/
+
+# ===== 构建产物 =====
+bin/
+obj/
+publish/
+*.dll
+*.pdb
+
+# ===== IDE / 系统文件 =====
+.vs/
+.idea/
+*.suo
+Thumbs.db
+Desktop.ini
+
+# ===== 临时文件 / 备份 =====
+*.log
+*.tmp
+*.bak
+_wa_pkg*/
