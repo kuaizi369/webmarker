@@ -227,6 +227,34 @@ function sendToHost(request) {
 }
 
 /* ================================================================== */
+/* 右键菜单（P1-5 划词快速标注）                                       */
+/* ================================================================== */
+
+/**
+ * 创建右键菜单。
+ * 在 onInstalled 时注册一次；SW 休眠重启后由 onInstalled 不会重复触发，
+ * 因此菜单创建放入 onInstalled（MV3 标准做法）。
+ */
+function createContextMenus() {
+  try {
+    chrome.contextMenus.removeAll(() => {
+      chrome.contextMenus.create({
+        id: "wm-add-annotation",
+        title: "添加为页签标注",
+        contexts: ["selection"],
+      });
+      chrome.contextMenus.create({
+        id: "wm-save-snapshot",
+        title: "保存本页快照",
+        contexts: ["page"],
+      });
+    });
+  } catch (err) {
+    console.warn("[WebAnnotator] 创建右键菜单失败:", err);
+  }
+}
+
+/* ================================================================== */
 /* 消息监听（popup → background）                                      */
 /* ================================================================== */
 
@@ -256,8 +284,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   // 2. 数据操作请求，转发到本地程序
   if (request && typeof request.action === "string") {
-    // 对需要 URL 的请求做前置校验（get / save）
-    if ((request.action === "get" || request.action === "save") && request.url) {
+    // 对需要 URL 的请求做前置校验（get / save / 快照）
+    if ((request.action === "get" || request.action === "save" || request.action === "saveSnapshot" || request.action === "getHighlightsByUrl") && request.url) {
       if (!isValidUrl(request.url)) {
         sendResponse({
           success: false,
@@ -274,7 +302,59 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true; // 异步响应
   }
 
-  // 3. 未知消息类型
+  // 3. 高亮跳转：打开 URL 并等页面加载完成后定位高亮（WM_OPEN_HIGHLIGHT）
+  if (request && request.type === "WM_OPEN_HIGHLIGHT" && request.url) {
+    if (!isValidUrl(request.url)) {
+      sendResponse({ success: false, error: "URL 无效", errorCode: "URL_INVALID" });
+      return false;
+    }
+    chrome.tabs.create({ url: request.url }, (tab) => {
+      const waitLoad = (tabId, changeInfo) => {
+        if (tabId === tab.id && changeInfo.status === "complete") {
+          chrome.tabs.onUpdated.removeListener(waitLoad);
+          if (request.quote) {
+            chrome.tabs.sendMessage(tabId, { type: "WM_LOCATE_HIGHLIGHT", quote: request.quote }, () => {
+              void chrome.runtime.lastError; // 忽略注入页无监听器的错误
+            });
+          }
+        }
+      };
+      chrome.tabs.onUpdated.addListener(waitLoad);
+    });
+    sendResponse({ success: true });
+    return false;
+  }
+
+  // 4. 快照抓取：让内容脚本返回页面 HTML，再转发 host 保存（WM_CAPTURE_SNAPSHOT）
+  if (request && request.type === "WM_CAPTURE_SNAPSHOT") {
+    const tabId = request.tabId;
+    if (!tabId) {
+      sendResponse({ success: false, error: "缺少 tabId", errorCode: "BAD_REQUEST" });
+      return false;
+    }
+    chrome.tabs.sendMessage(tabId, { type: "WM_GET_SNAPSHOT" }, (resp) => {
+      if (chrome.runtime.lastError) {
+        sendResponse({ success: false, error: "内容脚本不可用", errorCode: "CONTENT_UNAVAILABLE" });
+        return;
+      }
+      if (!resp || !resp.success) {
+        sendResponse({ success: false, error: "抓取快照失败", errorCode: "INTERNAL_ERROR" });
+        return;
+      }
+      // 转发 host 保存快照
+      sendToHost({
+        action: "saveSnapshot",
+        url: request.url,
+        title: request.title || "",
+        html: resp.html || "",
+      }).then((saveResp) => {
+        sendResponse(saveResp || { success: false, error: "保存快照失败", errorCode: "INTERNAL_ERROR" });
+      });
+    });
+    return true; // 异步响应
+  }
+
+  // 5. 未知消息类型
   console.warn("[WebAnnotator] 收到未知消息类型:", request);
   sendResponse({
     success: false,
@@ -283,6 +363,60 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   });
   return false;
 });
+
+/* ================================================================== */
+/* 右键菜单点击处理                                                    */
+/* ================================================================== */
+
+chrome.contextMenus.onClicked.addListener((info, tab) => {
+  // 划词 → 打开标注编辑并预填选中文本
+  if (info.menuItemId === "wm-add-annotation" && info.selectionText) {
+    const sel = encodeURIComponent(info.selectionText.slice(0, 5000));
+    chrome.tabs.create({
+      url: "options.html#annotate?text=" + sel + "&url=" + encodeURIComponent(info.pageUrl || ""),
+    });
+    return;
+  }
+
+  // 页面 → 保存快照
+  if (info.menuItemId === "wm-save-snapshot" && tab && tab.id) {
+    chrome.tabs.sendMessage(tab.id, { type: "WM_GET_SNAPSHOT" }, (resp) => {
+      if (chrome.runtime.lastError) {
+        console.warn("[WebAnnotator] 快照抓取失败:", chrome.runtime.lastError.message);
+        notifyToast(tab.id, "保存快照失败：内容脚本不可用");
+        return;
+      }
+      if (!resp || !resp.success) {
+        notifyToast(tab.id, "保存快照失败：抓取页面内容失败");
+        return;
+      }
+      sendToHost({
+        action: "saveSnapshot",
+        url: info.pageUrl || tab.url || "",
+        title: tab.title || "",
+        html: resp.html || "",
+      }).then((saveResp) => {
+        if (saveResp && saveResp.success) {
+          console.log("[WebAnnotator] 快照已保存:", saveResp.snapshot && saveResp.snapshot.id);
+          notifyToast(tab.id, "快照已保存");
+        } else {
+          notifyToast(tab.id, "保存快照失败：" + ((saveResp && saveResp.error) || "未知错误"));
+        }
+      });
+    });
+  }
+});
+
+/** 在当前标签页显示提示气泡（经 content script 的 toast）。 */
+function notifyToast(tabId, message) {
+  try {
+    chrome.tabs.sendMessage(tabId, { type: "WM_SHOW_TOAST", message: message }, () => {
+      void chrome.runtime.lastError; // 忽略页面无监听器的错误
+    });
+  } catch (err) {
+    console.warn("[WebAnnotator] toast 发送失败:", err);
+  }
+}
 
 /* ================================================================== */
 /* Service Worker 生命周期                                             */
@@ -296,4 +430,13 @@ chrome.runtime.onInstalled.addListener((details) => {
   console.log("[WebAnnotator] 扩展已安装/更新:", details.reason);
   // 初始化端口状态
   updatePortState(false);
+  // 注册右键菜单
+  createContextMenus();
 });
+
+// 顶层直接注册右键菜单（MV3 关键修复）
+// onInstalled 只在"安装/更新"时触发；浏览器重启、扩展 SW 冷启动后不再触发，
+// 若只写在 onInstalled 里，重启浏览器后右键菜单会永久丢失。
+// 顶层代码每次 SW 启动都会执行，createContextMenus 内部 removeAll+create 幂等，
+// 与 onInstalled 的调用重复执行也安全，确保菜单始终存在。
+createContextMenus();

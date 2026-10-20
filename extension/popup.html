@@ -66,32 +66,10 @@
     <!-- ==================== 操作区（始终可见） ==================== -->
     <section class="action-section" id="action-section">
       <button id="save-btn" class="btn btn-primary" title="保存标注">保存</button>
+      <button id="save-session-btn" class="btn btn-secondary" title="保存当前窗口全部标签页为会话">🗂 保存会话</button>
       <button id="panel-mgr-btn" class="btn btn-secondary" title="打开管理面板">面板管理</button>
     </section>
 
-    <!-- ==================== 搜索栏（默认隐藏） ==================== -->
-    <section class="search-bar-section" id="search-bar-section" hidden>
-      <input
-        type="text"
-        id="search-input"
-        class="search-input"
-        placeholder="输入关键词搜索 URL/标题/备注/标签..."
-        autocomplete="off">
-    </section>
-
-    <!-- ==================== 结果区（独立滚动） ==================== -->
-    <section class="result-section" id="result-section">
-      <div class="result-header" id="result-header">
-        <span class="result-title" id="result-title">结果</span>
-        <button class="result-close-btn" id="result-close-btn" title="关闭结果" hidden>✕</button>
-      </div>
-      <div class="result-list" id="result-list">
-        <!-- 搜索结果 / 标签管理列表 / 筛选结果 动态插入 -->
-      </div>
-      <div class="result-footer" id="result-footer" hidden>
-        <button class="btn btn-text" id="load-more-btn">加载更多</button>
-      </div>
-    </section>
 
     <!-- ==================== 状态提示区 ==================== -->
     <div class="status-bar" id="status-bar" hidden>
@@ -134,18 +112,6 @@
       </div>
     </div>
 
-    <!-- ==================== 删除确认弹窗 ==================== -->
-    <div class="overlay-guide" id="delete-confirm" hidden>
-      <div class="guide-card">
-        <div class="guide-icon">🗑</div>
-        <h3 class="guide-title">确认删除标签</h3>
-        <p class="guide-desc" id="delete-confirm-desc"></p>
-        <div class="guide-btn-row">
-          <button class="btn btn-secondary" id="delete-cancel-btn">取消</button>
-          <button class="btn btn-danger" id="delete-ok-btn">确认删除</button>
-        </div>
-      </div>
-    </div>
 
     <!-- ==================== 预览弹窗（绝对定位，动态位置） ==================== -->
     <div class="preview-popup" id="preview-popup" hidden>

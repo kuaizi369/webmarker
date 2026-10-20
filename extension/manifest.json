@@ -27,15 +27,24 @@
 
   "permissions": [
     "nativeMessaging",
-
     "activeTab",
     "storage",
     "bookmarks",
-
-    "management"
+    "management",
+    "tabs",
+    "contextMenus"
   ],
 
   "host_permissions": [],
+
+  "content_scripts": [
+    {
+      "matches": ["http://*/*", "https://*/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle",
+      "all_frames": false
+    }
+  ],
 
   "icons": {
     "16": "icons/icon16.png",

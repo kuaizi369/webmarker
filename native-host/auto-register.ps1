@@ -4,13 +4,14 @@
 # 用途：在浏览器"加载已解压的扩展程序"之后，自动检测 WebAnnotator / 页签(WebMarker)
 #       扩展的真实 ID，并注册 Native Messaging Host（写清单 + 写注册表）。
 #
-# 注册逻辑：扫描主流浏览器（Edge / Chrome），在哪个浏览器找到已加载的扩展 ID，
+# 注册逻辑：扫描主流浏览器（Edge / Chrome / Yandex），在哪个浏览器找到已加载的扩展 ID，
 #           就注册哪个浏览器；未找到的浏览器直接跳过；相同 ID 只注册一次。
 #
 # 用法：
-#   .\auto-register.ps1                 # 自动检测 Edge / Chrome 中的扩展，找到哪个注册哪个
+#   .\auto-register.ps1                 # 自动检测 Edge / Chrome / Yandex 中的扩展，找到哪个注册哪个
 #   .\auto-register.ps1 -EdgeId xxx     # 手动指定 Edge 扩展 ID（覆盖自动检测）
 #   .\auto-register.ps1 -ChromeId xxx   # 手动指定 Chrome 扩展 ID
+#   .\auto-register.ps1 -YandexId xxx   # 手动指定 Yandex 扩展 ID
 #   .\auto-register.ps1 -System         # 注册到系统级（HKLM，需管理员）
 #
 # 说明：扩展 ID 由加载路径决定，卸载后重新加载同一目录 ID 不变；
@@ -21,6 +22,7 @@
 param(
     [string]$EdgeId,
     [string]$ChromeId,
+    [string]$YandexId,
     [switch]$System
 )
 
@@ -115,10 +117,12 @@ Write-Host "== 1. 扫描已加载的 WebAnnotator 扩展 ID ==" -ForegroundColor
 
 $edgeIds = @()
 $chromeIds = @()
+$yandexIds = @()
 
 $browsers = @(
-    @{ Name = "Edge";   Base = "$env:LOCALAPPDATA\Microsoft\Edge\User Data" },
-    @{ Name = "Chrome"; Base = "$env:LOCALAPPDATA\Google\Chrome\User Data" }
+    @{ Name = "Edge";    Base = "$env:LOCALAPPDATA\Microsoft\Edge\User Data" },
+    @{ Name = "Chrome";  Base = "$env:LOCALAPPDATA\Google\Chrome\User Data" },
+    @{ Name = "Yandex";  Base = "$env:LOCALAPPDATA\Yandex\YandexBrowser\User Data" }
 )
 
 foreach ($b in $browsers) {
@@ -131,22 +135,26 @@ foreach ($b in $browsers) {
 
     $collected = @()
     foreach ($profile in $profiles) {
-        # 权威记录可能在 Preferences（Chrome）或 Secure Preferences（Edge 155+）
+        # 权威记录可能在 Preferences（Chrome）或 Secure Preferences（Edge 155+ / Yandex）
         $collected += Get-WebAnnotatorIdsFromPreferences (Join-Path $b.Base "$profile\Preferences") $b.Name
         $collected += Get-WebAnnotatorIdsFromPreferences (Join-Path $b.Base "$profile\Secure Preferences") $b.Name
     }
 
     if ($b.Name -eq "Edge")   { $edgeIds   = $collected | Select-Object -Unique }
-    else                      { $chromeIds = $collected | Select-Object -Unique }
+    elseif ($b.Name -eq "Chrome") { $chromeIds = $collected | Select-Object -Unique }
+    else                      { $yandexIds = $collected | Select-Object -Unique }
 }
 
 # 手动指定时覆盖自动检测结果
 if ($EdgeId)   { $edgeIds   = @($EdgeId);   Write-Host "  [Edge]   使用手动指定的扩展 ID: $EdgeId" -ForegroundColor Cyan }
 if ($ChromeId) { $chromeIds = @($ChromeId); Write-Host "  [Chrome] 使用手动指定的扩展 ID: $ChromeId" -ForegroundColor Cyan }
+if ($YandexId) { $yandexIds = @($YandexId); Write-Host "  [Yandex] 使用手动指定的扩展 ID: $YandexId" -ForegroundColor Cyan }
 
 # 汇总：找到哪个浏览器注册哪个，未找到的浏览器直接跳过（不注册）
 foreach ($b in $browsers) {
-    $n = if ($b.Name -eq "Edge") { @($edgeIds).Count } else { @($chromeIds).Count }
+    $n = if ($b.Name -eq "Edge") { @($edgeIds).Count }
+         elseif ($b.Name -eq "Chrome") { @($chromeIds).Count }
+         else { @($yandexIds).Count }
     if ($n -gt 0) {
         Write-Host "  [$($b.Name)] 检测到 $n 个扩展 ID → 将注册该浏览器" -ForegroundColor Green
     } else {
@@ -154,14 +162,14 @@ foreach ($b in $browsers) {
     }
 }
 
-if (@($edgeIds).Count -eq 0 -and @($chromeIds).Count -eq 0) {
+if (@($edgeIds).Count -eq 0 -and @($chromeIds).Count -eq 0 -and @($yandexIds).Count -eq 0) {
     Write-Host ""
     Write-Host "未检测到【已加载】的 WebAnnotator 扩展。" -ForegroundColor Yellow
     Write-Host "（即使浏览器里留有旧 ID 的残留记录，也不会注册——那不能证明扩展已加载。）" -ForegroundColor DarkGray
     Write-Host ""
     Write-Host "请先完成第 1 步：在浏览器中加载扩展" -ForegroundColor Yellow
-    Write-Host "  edge://extensions（或 chrome://extensions）→ 开发者模式 → 加载已解压的扩展程序 → 选择 extension 目录" -ForegroundColor Yellow
-    Write-Host "加载后再重跑本脚本；或直接用 -EdgeId / -ChromeId 手动指定 ID。" -ForegroundColor Yellow
+    Write-Host "  edge://extensions（或 chrome://extensions、browser://extensions）→ 开发者模式 → 加载已解压的扩展程序 → 选择 extension 目录" -ForegroundColor Yellow
+    Write-Host "加载后再重跑本脚本；或直接用 -EdgeId / -ChromeId / -YandexId 手动指定 ID。" -ForegroundColor Yellow
     pause
     exit 1
 }
@@ -243,6 +251,15 @@ foreach ($id in @($chromeIds | Select-Object -Unique)) {
         Write-Host "  Chrome 扩展 $id 与已注册 ID 相同 → 跳过（不重复注册）" -ForegroundColor DarkGray
     }
 }
+foreach ($id in @($yandexIds | Select-Object -Unique)) {
+    if ($registeredIds -notcontains $id) {
+        Write-Host "  注册 Yandex 扩展: $id" -ForegroundColor Green
+        $installArgs += "--yandex-id"; $installArgs += $id
+        $registeredIds += $id
+    } else {
+        Write-Host "  Yandex 扩展 $id 与已注册 ID 相同 → 跳过（不重复注册）" -ForegroundColor DarkGray
+    }
+}
 if ($registeredIds.Count -eq 0) {
     Write-Host "  没有可注册的扩展 ID，退出。" -ForegroundColor Red
     pause
@@ -271,5 +288,5 @@ if (Test-Path $manifest) {
 }
 
 Write-Host ""
-Write-Host "完成。请到 edge://extensions（或 chrome://extensions）刷新扩展后使用。" -ForegroundColor Green
+Write-Host "完成。请到 edge://extensions（或 chrome://extensions、browser://extensions）刷新扩展后使用。" -ForegroundColor Green
 pause

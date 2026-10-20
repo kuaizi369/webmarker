@@ -30,10 +30,8 @@ const THEME_DARK = 2;
 const TAG_NAME_MAX_LENGTH = 30;
 
 /** 搜索/筛选默认分页大小 */
-const DEFAULT_LIMIT = 50;
 
 /** 搜索防抖延迟（毫秒） */
-const SEARCH_DEBOUNCE_MS = 250;
 
 /** 标签自动补全防抖延迟 */
 const AUTOCOMPLETE_DEBOUNCE_MS = 150;
@@ -51,22 +49,18 @@ const state = {
   urlValid: false,
   /** 当前标签列表（字符串数组） */
   tags: [],
+  /** 已加载的历史标注 id（编辑保存时按 id 更新；null=首次新建） */
+  currentAnnotationId: null,
   /** 主题模式 */
   themeMode: THEME_FOLLOW_SYSTEM,
   /** 系统主题媒体查询监听器 */
   mediaQueryList: null,
   /** 搜索分页 offset */
-  searchOffset: 0,
   /** 搜索结果总数 */
-  searchTotal: 0,
   /** 当前搜索关键词 */
-  searchQuery: "",
   /** 标签筛选分页 offset */
-  filterOffset: 0,
   /** 标签筛选结果总数 */
-  filterTotal: 0,
   /** 当前筛选的标签 ID 列表 */
-  filterTagIds: [],
   /** 自动补全当前高亮索引 */
   autocompleteActiveIndex: -1,
   /** 自动补全当前候选项 */
@@ -96,15 +90,7 @@ function initDomRefs() {
   dom.noteInput = document.getElementById("note-input");
   dom.saveBtn = document.getElementById("save-btn");
   dom.panelMgrBtn = document.getElementById("panel-mgr-btn");
-  dom.searchBarSection = document.getElementById("search-bar-section");
-  dom.searchInput = document.getElementById("search-input");
-  dom.resultSection = document.getElementById("result-section");
-  dom.resultHeader = document.getElementById("result-header");
-  dom.resultTitle = document.getElementById("result-title");
-  dom.resultCloseBtn = document.getElementById("result-close-btn");
-  dom.resultList = document.getElementById("result-list");
-  dom.resultFooter = document.getElementById("result-footer");
-  dom.loadMoreBtn = document.getElementById("load-more-btn");
+  dom.saveSessionBtn = document.getElementById("save-session-btn");
   dom.statusBar = document.getElementById("status-bar");
   dom.statusText = document.getElementById("status-text");
   dom.installGuide = document.getElementById("install-guide");
@@ -115,10 +101,6 @@ function initDomRefs() {
   dom.configHint = document.getElementById("config-hint");
   dom.configConfirmBtn = document.getElementById("config-confirm-btn");
   dom.configCancelBtn = document.getElementById("config-cancel-btn");
-  dom.deleteConfirm = document.getElementById("delete-confirm");
-  dom.deleteConfirmDesc = document.getElementById("delete-confirm-desc");
-  dom.deleteCancelBtn = document.getElementById("delete-cancel-btn");
-  dom.deleteOkBtn = document.getElementById("delete-ok-btn");
   dom.previewPopup = document.getElementById("preview-popup");
   dom.previewTitle = document.getElementById("preview-title");
   dom.previewBody = document.getElementById("preview-body");
@@ -214,6 +196,32 @@ function openOptionsPage(view) {
       showStatus("打开管理面板失败", "error");
     }
   });
+}
+
+/* ================================================================== */
+/* 保存会话（当前窗口全部标签页）                                     */
+/* ================================================================== */
+
+async function saveCurrentWindowSession() {
+  try {
+    const tabs = await chrome.tabs.query({ currentWindow: true });
+    const items = tabs
+      .filter((t) => t.url && /^https?:\/\//i.test(t.url))
+      .map((t) => ({ url: t.url, title: t.title || "" }));
+    if (items.length === 0) {
+      showStatus("当前窗口没有可保存的网页标签页", "info", 2500);
+      return;
+    }
+    const resp = await sendAction({ action: "saveSession", items }, "保存会话");
+    if (resp && resp.success) {
+      showStatus(`会话已保存（${items.length} 个标签页）`, "success", 3000);
+    } else {
+      showStatus((resp && resp.error) || "保存会话失败", "error");
+    }
+  } catch (err) {
+    console.error("[WebAnnotator] 保存会话失败:", err);
+    showStatus("保存会话失败", "error");
+  }
 }
 
 /* ================================================================== */
@@ -449,6 +457,17 @@ function onTagInput() {
 }
 
 /**
+ * 标签输入聚焦：显示已有标签候选。
+ * 输入框为空时显示全部标签（按使用量降序），方便直接点击选择减少打字；有文字时显示匹配联想。
+ */
+function onTagFocus() {
+  if (autocompleteDebounceTimer) {
+    clearTimeout(autocompleteDebounceTimer);
+  }
+  fetchAutocomplete(dom.tagInput.value.trim());
+}
+
+/**
  * 查询自动补全候选标签。
  * @param {string} query
  */
@@ -605,13 +624,15 @@ async function loadAnnotation() {
 
   const annotation = resp.data && resp.data.annotation;
   if (annotation) {
-    // 有历史标注：填充标签与备注（智能记忆）
+    // 有历史标注：填充标签与备注（智能记忆）；记录 id 供编辑保存更新该条
+    state.currentAnnotationId = annotation.id || null;
     state.tags = Array.isArray(annotation.tags) ? annotation.tags.slice() : [];
     renderTags();
     dom.noteInput.value = annotation.note || "";
     showStatus("已加载历史标注", "info", 1500);
   } else {
     // 无历史标注：显示空状态提示
+    state.currentAnnotationId = null;
     state.tags = [];
     renderTags();
     dom.noteInput.value = "";
@@ -678,17 +699,19 @@ async function saveAnnotation() {
   dom.saveBtn.textContent = "保存中...";
 
   const note = dom.noteInput.value;
-  const resp = await sendAction(
-    {
-      action: "save",
-      url: state.currentUrl,
-      title: state.currentTitle,
-      tags: state.tags.slice(),
-      note: note,
-      category: null,
-    },
-    "保存"
-  );
+  const req = {
+    action: "save",
+    url: state.currentUrl,
+    title: state.currentTitle,
+    tags: state.tags.slice(),
+    note: note,
+    category: null,
+  };
+  // 编辑已有标注时按 id 更新该条；首次保存不带 id → host 新建（同一 URL 可多条）
+  if (state.currentAnnotationId) {
+    req.annotationId = state.currentAnnotationId;
+  }
+  const resp = await sendAction(req, "保存");
 
   // 恢复按钮状态（无论成功失败，编辑内容都保留在输入框中不丢失）
   dom.saveBtn.disabled = false;
@@ -701,6 +724,10 @@ async function saveAnnotation() {
     if (annotation && Array.isArray(annotation.tags)) {
       state.tags = annotation.tags.slice();
       renderTags();
+    }
+    // 记录新记录 id（新建后后续编辑即更新该条）
+    if (annotation && annotation.id) {
+      state.currentAnnotationId = annotation.id;
     }
   } else {
     // 保存失败/超时：编辑内容保留在输入框中不丢失
@@ -739,367 +766,13 @@ function handleSaveError(resp) {
 /* 搜索 — T18                                                         */
 /* ================================================================== */
 
-let searchDebounceTimer = null;
-
-/**
- * 切换到搜索模式。
- */
-function showSearchMode() {
-  dom.searchBarSection.hidden = false;
-  dom.searchInput.focus();
-  dom.resultSection.style.display = "";
-  dom.resultCloseBtn.hidden = false;
-  dom.resultTitle.textContent = "搜索结果";
-  // 如果搜索框已有内容，触发搜索
-  if (dom.searchInput.value.trim()) {
-    doSearch(true);
-  } else {
-    // 加载全部标注
-    doSearch(true);
-  }
-}
-
-/**
- * 搜索输入事件：防抖触发搜索。
- */
-function onSearchInput() {
-  if (searchDebounceTimer) {
-    clearTimeout(searchDebounceTimer);
-  }
-  searchDebounceTimer = setTimeout(() => {
-    doSearch(true);
-  }, SEARCH_DEBOUNCE_MS);
-}
-
-/**
- * 执行搜索。
- * @param {boolean} reset - 是否重置分页（新搜索）
- */
-async function doSearch(reset = false) {
-  const query = dom.searchInput.value.trim();
-
-  if (reset) {
-    state.searchOffset = 0;
-    state.searchQuery = query;
-    dom.resultList.innerHTML = "";
-  }
-
-  showResultLoading("搜索中...");
-
-  const resp = await sendAction(
-    {
-      action: "search",
-      query: query,
-      limit: DEFAULT_LIMIT,
-      offset: state.searchOffset,
-    },
-    "搜索"
-  );
-
-  if (!resp.success) {
-    dom.resultList.innerHTML = "";
-    if (resp.errorCode === "HOST_NOT_FOUND") {
-      showInstallGuide();
-    } else if (resp.errorCode === "HOST_NOT_INITIALIZED") {
-      showConfigGuide();
-    } else {
-      renderEmptyState(resp.error || "搜索失败");
-    }
-    return;
-  }
-
-  const results = (resp.data && resp.data.results) || [];
-  state.searchTotal = (resp.data && resp.data.total) || 0;
-
-  if (reset) {
-    dom.resultList.innerHTML = "";
-  }
-
-  if (results.length === 0 && state.searchOffset === 0) {
-    renderEmptyState(query ? "未找到匹配的标注" : "暂无标注记录");
-    dom.resultFooter.hidden = true;
-    return;
-  }
-
-  // 渲染搜索结果
-  for (const item of results) {
-    dom.resultList.appendChild(createSearchResultItem(item));
-  }
-
-  // 加载更多按钮
-  updateLoadMoreButton(state.searchOffset + results.length, state.searchTotal, doSearchMore);
-}
-
-/** 加载更多搜索结果 */
-async function doSearchMore() {
-  state.searchOffset += DEFAULT_LIMIT;
-  await doSearch(false);
-}
-
-/**
- * 创建搜索结果项元素。
- * @param {object} item - {url, title, tags, notePreview, updatedAt}
- * @returns {HTMLElement}
- */
-function createSearchResultItem(item) {
-  const div = document.createElement("div");
-  div.className = "result-item";
-
-  // 标题
-  const titleEl = document.createElement("div");
-  titleEl.className = "result-item-title";
-  titleEl.textContent = item.title || "（无标题）";
-  titleEl.title = item.title || "";
-  div.appendChild(titleEl);
-
-  // URL
-  const urlEl = document.createElement("div");
-  urlEl.className = "result-item-url";
-  urlEl.textContent = item.url || "";
-  urlEl.title = item.url || "";
-  div.appendChild(urlEl);
-
-  // 标签
-  if (Array.isArray(item.tags) && item.tags.length > 0) {
-    const tagsEl = document.createElement("div");
-    tagsEl.className = "result-item-tags";
-    for (const tag of item.tags) {
-      const tagSpan = document.createElement("span");
-      tagSpan.className = "result-item-tag";
-      tagSpan.textContent = tag;
-      tagSpan.title = tag;
-      tagsEl.appendChild(tagSpan);
-    }
-    div.appendChild(tagsEl);
-  }
-
-  // 备注摘要
-  if (item.notePreview) {
-    const noteEl = document.createElement("div");
-    noteEl.className = "result-item-note";
-    noteEl.textContent = item.notePreview;
-    div.appendChild(noteEl);
-  }
-
-  // 更新时间
-  if (item.updatedAt) {
-    const timeEl = document.createElement("div");
-    timeEl.className = "result-item-time";
-    timeEl.textContent = formatTime(item.updatedAt);
-    div.appendChild(timeEl);
-  }
-
-  // 点击预览
-  div.addEventListener("click", (e) => {
-    showPreview(div, item);
-  });
-
-  return div;
-}
-
 /* ================================================================== */
 /* 标签管理 — T18                                                     */
 /* ================================================================== */
 
-/**
- * 切换到标签管理模式。
- */
-async function showTagManagement() {
-  dom.searchBarSection.hidden = true;
-  dom.resultSection.style.display = "";
-  dom.resultCloseBtn.hidden = false;
-  dom.resultTitle.textContent = "标签管理";
-
-  showResultLoading("加载标签...");
-
-  const resp = await sendAction({ action: "getTagsWithCount" }, "加载标签列表");
-
-  if (!resp.success) {
-    dom.resultList.innerHTML = "";
-    if (resp.errorCode === "HOST_NOT_FOUND") {
-      showInstallGuide();
-    } else if (resp.errorCode === "HOST_NOT_INITIALIZED") {
-      showConfigGuide();
-    } else {
-      renderEmptyState(resp.error || "加载标签失败");
-    }
-    return;
-  }
-
-  const tags = (resp.data && resp.data.tags) || [];
-
-  if (tags.length === 0) {
-    renderEmptyState("暂无标签，标注网页后将自动创建标签");
-    dom.resultFooter.hidden = true;
-    return;
-  }
-
-  dom.resultList.innerHTML = "";
-  // 按数量降序（后端已排序，此处保险再排一次）
-  tags.sort((a, b) => (b.count || 0) - (a.count || 0));
-  for (const tag of tags) {
-    dom.resultList.appendChild(createTagMgrItem(tag));
-  }
-  dom.resultFooter.hidden = true;
-}
-
-/**
- * 创建标签管理列表项。
- * @param {object} tag - {id, name, count, createdAt}
- * @returns {HTMLElement}
- */
-function createTagMgrItem(tag) {
-  const div = document.createElement("div");
-  div.className = "tag-mgr-item";
-
-  const infoDiv = document.createElement("div");
-  infoDiv.className = "tag-mgr-item-info";
-
-  const nameSpan = document.createElement("span");
-  nameSpan.className = "tag-mgr-item-name";
-  nameSpan.textContent = tag.name;
-  nameSpan.title = tag.name;
-  infoDiv.appendChild(nameSpan);
-
-  const countSpan = document.createElement("span");
-  countSpan.className = "tag-mgr-item-count";
-  countSpan.textContent = `${tag.count || 0} 个网页`;
-  infoDiv.appendChild(countSpan);
-
-  div.appendChild(infoDiv);
-
-  // 点击筛选
-  div.addEventListener("click", () => {
-    filterByTags([tag.id], tag.name);
-  });
-
-  // 删除按钮
-  const deleteBtn = document.createElement("button");
-  deleteBtn.className = "tag-mgr-item-delete";
-  deleteBtn.textContent = "🗑";
-  deleteBtn.title = "删除标签";
-  deleteBtn.addEventListener("click", (e) => {
-    e.stopPropagation();
-    showDeleteConfirm(tag);
-  });
-  div.appendChild(deleteBtn);
-
-  return div;
-}
-
-/**
- * 按标签筛选标注。
- * @param {number[]} tagIds - 标签 ID 列表
- * @param {string} tagName - 标签名称（用于显示）
- */
-async function filterByTags(tagIds, tagName) {
-  state.filterTagIds = tagIds;
-  state.filterOffset = 0;
-  dom.resultTitle.textContent = `关联标签「${tagName}」的网页`;
-
-  showResultLoading("筛选中...");
-
-  const resp = await sendAction(
-    {
-      action: "getAnnotationsByTag",
-      tagIds: tagIds,
-      limit: DEFAULT_LIMIT,
-      offset: 0,
-    },
-    "标签筛选"
-  );
-
-  if (!resp.success) {
-    renderEmptyState(resp.error || "筛选失败");
-    dom.resultFooter.hidden = true;
-    return;
-  }
-
-  const results = (resp.data && resp.data.results) || [];
-  state.filterTotal = (resp.data && resp.data.total) || 0;
-
-  dom.resultList.innerHTML = "";
-
-  if (results.length === 0) {
-    renderEmptyState("没有关联的网页");
-    dom.resultFooter.hidden = true;
-    return;
-  }
-
-  for (const item of results) {
-    dom.resultList.appendChild(createSearchResultItem(item));
-  }
-
-  updateLoadMoreButton(results.length, state.filterTotal, doFilterMore);
-}
-
-/** 加载更多筛选结果 */
-async function doFilterMore() {
-  state.filterOffset += DEFAULT_LIMIT;
-  const resp = await sendAction(
-    {
-      action: "getAnnotationsByTag",
-      tagIds: state.filterTagIds,
-      limit: DEFAULT_LIMIT,
-      offset: state.filterOffset,
-    },
-    "标签筛选"
-  );
-
-  if (!resp.success) return;
-
-  const results = (resp.data && resp.data.results) || [];
-  for (const item of results) {
-    dom.resultList.appendChild(createSearchResultItem(item));
-  }
-  updateLoadMoreButton(state.filterOffset + results.length, state.filterTotal, doFilterMore);
-}
-
 /* ---------- 删除标签确认 ---------- */
 
 /** 待删除的标签信息 */
-let pendingDeleteTag = null;
-
-/**
- * 显示删除标签确认弹窗。
- * @param {object} tag - {id, name, count}
- */
-function showDeleteConfirm(tag) {
-  pendingDeleteTag = tag;
-  dom.deleteConfirmDesc.textContent =
-    `标签「${tag.name}」关联了 ${tag.count || 0} 个网页，确认删除将解除全部关联。`;
-  dom.deleteConfirm.hidden = false;
-}
-
-/** 隐藏删除确认弹窗 */
-function hideDeleteConfirm() {
-  dom.deleteConfirm.hidden = true;
-  pendingDeleteTag = null;
-}
-
-/**
- * 确认删除标签。
- */
-async function confirmDeleteTag() {
-  if (!pendingDeleteTag) return;
-
-  const tagId = pendingDeleteTag.id;
-  hideDeleteConfirm();
-
-  showStatus("正在删除...", "info", 0);
-
-  const resp = await sendAction({ action: "deleteTag", tagId }, "删除标签");
-
-  if (resp.success) {
-    const affected = (resp.data && resp.data.affectedAnnotations) || 0;
-    showStatus(`已删除标签，解除 ${affected} 个网页关联`, "success");
-    // 刷新标签管理列表
-    showTagManagement();
-  } else {
-    showStatus(resp.error || "删除失败", "error", 0);
-    console.error("[WebAnnotator] 删除标签错误:", resp.errorCode, resp.error);
-  }
-}
 
 /* ================================================================== */
 /* 预览弹窗（动态位置） — T18 / PREFERENCE_1                          */
@@ -1263,64 +936,6 @@ function hidePreview() {
 /* ================================================================== */
 
 /**
- * 显示结果区加载状态。
- * @param {string} text
- */
-function showResultLoading(text) {
-  dom.resultSection.style.display = "";
-  dom.resultList.innerHTML = "";
-  const loading = document.createElement("div");
-  loading.className = "loading-state";
-  loading.textContent = text;
-  dom.resultList.appendChild(loading);
-  dom.resultFooter.hidden = true;
-}
-
-/**
- * 渲染空状态提示。
- * @param {string} text
- */
-function renderEmptyState(text) {
-  dom.resultSection.style.display = "";
-  dom.resultList.innerHTML = "";
-  const empty = document.createElement("div");
-  empty.className = "empty-state";
-  empty.textContent = text;
-  dom.resultList.appendChild(empty);
-}
-
-/**
- * 更新"加载更多"按钮状态。
- * @param {number} shown - 已显示数量
- * @param {number} total - 总数
- * @param {function} handler - 点击处理函数
- */
-function updateLoadMoreButton(shown, total, handler) {
-  if (shown < total) {
-    dom.resultFooter.hidden = false;
-    dom.loadMoreBtn.textContent = `加载更多（${shown}/${total}）`;
-    // 替换事件监听器（移除旧的再添加新的）
-    const newBtn = dom.loadMoreBtn.cloneNode(true);
-    dom.loadMoreBtn.parentNode.replaceChild(newBtn, dom.loadMoreBtn);
-    dom.loadMoreBtn = newBtn;
-    dom.loadMoreBtn.addEventListener("click", handler);
-  } else {
-    dom.resultFooter.hidden = true;
-  }
-}
-
-/**
- * 关闭结果区。
- */
-function closeResultSection() {
-  dom.searchBarSection.hidden = true;
-  dom.resultSection.style.display = "none";
-  dom.resultCloseBtn.hidden = true;
-  dom.resultFooter.hidden = true;
-  dom.searchInput.value = "";
-}
-
-/**
  * 格式化时间显示。
  * @param {string} isoString - ISO8601 时间字符串
  * @returns {string} 格式化后的时间
@@ -1363,10 +978,7 @@ function hideInstallGuide() {
 /** 显示配置引导（HOST_NOT_INITIALIZED 或用户主动打开设置） */
 function showConfigGuide() {
   dom.configGuide.hidden = false;
-  // 填充默认路径建议
-  if (!dom.dataPathInput.value) {
-    dom.dataPathInput.value = getDefaultDataPath();
-  }
+  // 由用户通过"选择目录"按钮选择真实路径，不预填占位路径
 }
 
 /** 打开数据目录设置：先读取当前路径预填，再显示设置弹窗 */
@@ -1387,17 +999,6 @@ async function openDataPathSettings() {
 function hideConfigGuide() {
   dom.configGuide.hidden = true;
   dom.configHint.textContent = "";
-}
-
-/**
- * 获取默认数据路径建议。
- * @returns {string}
- */
-function getDefaultDataPath() {
-  // 尝试常见路径
-  const localAppData = navigator.userAgentData?.platform || "";
-  // 无法直接获取本地路径，提供常见建议（<用户名> 为占位符，请按实际替换）
-  return "C:\\Users\\<用户名>\\Documents\\WebAnnotatorData";
 }
 
 /**
@@ -1443,6 +1044,7 @@ function bindEvents() {
   dom.themeToggle.addEventListener("click", onThemeToggleClick);
 
   // 标签输入
+  dom.tagInput.addEventListener("focus", onTagFocus);
   dom.tagInput.addEventListener("input", onTagInput);
   dom.tagInput.addEventListener("keydown", onTagInputKeyDown);
   dom.tagInput.addEventListener("blur", () => {
@@ -1456,10 +1058,9 @@ function bindEvents() {
   // 面板管理：打开全页管理面板（options.html）
   // 搜索 / 标签管理 / 导入导出 / 数据统计 均在管理面板内进行（用户需求）
   dom.panelMgrBtn.addEventListener("click", () => openOptionsPage());
-  dom.searchInput.addEventListener("input", onSearchInput);
+  dom.saveSessionBtn.addEventListener("click", saveCurrentWindowSession);
 
   // 结果区关闭
-  dom.resultCloseBtn.addEventListener("click", closeResultSection);
 
   // 预览关闭
   dom.previewCloseBtn.addEventListener("click", hidePreview);
@@ -1484,14 +1085,11 @@ function bindEvents() {
   dom.configCancelBtn.addEventListener("click", hideConfigGuide);
 
   // 删除确认
-  dom.deleteCancelBtn.addEventListener("click", hideDeleteConfirm);
-  dom.deleteOkBtn.addEventListener("click", confirmDeleteTag);
 
   // Esc 关闭弹窗
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape") {
       if (!dom.previewPopup.hidden) hidePreview();
-      if (!dom.deleteConfirm.hidden) hideDeleteConfirm();
     }
   });
 }
@@ -1518,7 +1116,6 @@ async function init() {
     setThemeMode(THEME_FOLLOW_SYSTEM);
 
     // 隐藏结果区
-    dom.resultSection.style.display = "none";
 
     // 并行加载主题配置和标注数据
     await Promise.all([

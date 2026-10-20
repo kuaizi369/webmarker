@@ -368,6 +368,12 @@ html, body {
   border-bottom: 1px solid var(--border);
   flex-shrink: 0; /* 关键：不被压缩，始终可见 */
   background: var(--bg-secondary);
+  flex-wrap: wrap;
+}
+
+.action-section .btn {
+  flex: 1;
+  min-width: 0;
 }
 
 /* ---------- 按钮通用样式 ---------- */

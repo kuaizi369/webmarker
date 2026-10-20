@@ -261,6 +261,27 @@ html, body {
   transition: border-color 0.15s, box-shadow 0.15s;
   position: relative;
 }
+.result-item-edit {
+  position: absolute;
+  top: 8px;
+  right: 38px;
+  border: none;
+  background: transparent;
+  color: var(--text-tertiary);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 5px 7px;
+  border-radius: 8px;
+  opacity: 0.55;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+  z-index: 2;
+}
+.result-item-edit:hover {
+  opacity: 1;
+  color: var(--accent);
+  background: var(--accent-soft);
+}
 .result-item-delete {
   position: absolute;
   top: 8px;
@@ -333,16 +354,37 @@ html, body {
   font-size: 14px;
 }
 
-/* ---------- 搜索框 ---------- */
+/* ---------- 搜索框（含筛选下拉） ---------- */
 .search-box {
   position: sticky;
   top: 0;
   z-index: 5;
   padding: 8px 0;
   background: var(--bg-primary);
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.search-filter {
+  flex-shrink: 0;
+  padding: 11px 10px;
+  font-size: 13.5px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  outline: none;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.search-filter:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-light);
 }
 .search-input {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
+  width: auto;
   padding: 12px 16px;
   font-size: 14px;
   border: 1px solid var(--border-strong);
@@ -392,19 +434,22 @@ html, body {
 }
 
 /* ---------- 标签列表（管理视图） ---------- */
+/* 多列动态排列：随容器宽度自动增减列数，标签卡片宽度动态收缩 */
 .tag-list {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 8px;
 }
 .tag-mgr-item {
   background: var(--bg-secondary);
   border: 1px solid var(--border);
   border-radius: 10px;
-  padding: 12px 14px;
+  padding: 10px 12px;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 6px;
+  min-width: 0;
   cursor: pointer;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
@@ -415,7 +460,8 @@ html, body {
 .tag-mgr-item-info {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
+  flex: 1;
   min-width: 0;
 }
 .tag-mgr-item-name {
@@ -424,6 +470,8 @@ html, body {
   background: var(--tag-bg);
   border-radius: 20px;
   padding: 3px 12px;
+  flex-shrink: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -431,6 +479,8 @@ html, body {
 .tag-mgr-item-count {
   font-size: 13px;
   color: var(--text-secondary);
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .tag-mgr-item-delete {
   border: none;
@@ -440,6 +490,7 @@ html, body {
   cursor: pointer;
   padding: 4px 8px;
   border-radius: 6px;
+  flex-shrink: 0;
 }
 .tag-mgr-item-delete:hover {
   color: var(--danger);
@@ -511,3 +562,240 @@ html, body {
   justify-content: flex-end;
   margin-top: 6px;
 }
+
+/* ---------- 编辑标注弹窗 ---------- */
+.modal-card-edit {
+  width: 460px;
+}
+.edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.edit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.edit-label {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.edit-field input,
+.edit-field textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  padding: 9px 11px;
+  font-size: 13.5px;
+  font-family: inherit;
+  resize: vertical;
+}
+.edit-field input:focus,
+.edit-field textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.edit-error {
+  color: var(--danger);
+  font-size: 12.5px;
+  text-align: left !important;
+}
+
+/* ================================================================== */
+/* P0/P1 新增视图样式（高亮 / 会话 / 快照 / 图谱）                      */
+/* ================================================================== */
+
+/* 小按钮 */
+.btn-sm {
+  padding: 4px 10px;
+  font-size: 12px;
+  border-radius: 6px;
+}
+
+/* 行内操作按钮组（条目右侧） */
+.result-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.result-main {
+  min-width: 0;
+  flex: 1;
+}
+
+/* 高亮色块 */
+.hl-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  vertical-align: -1px;
+  margin-right: 6px;
+}
+
+/* 标签管理内 Tab（列表 / 图谱） */
+.manage-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 14px;
+}
+
+.manage-tab {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.manage-tab.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* 图谱容器 */
+.tag-graph {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px;
+  overflow: auto;
+  min-height: 180px;
+}
+
+.graph-svg {
+  width: 100%;
+  height: auto;
+  min-height: 320px;
+  display: block;
+  color: var(--text-primary);
+}
+
+/* 会话条目展开区 */
+.sess-items {
+  margin-top: 8px;
+  border-top: 1px dashed var(--border);
+  padding-top: 8px;
+}
+
+.sess-item-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.sess-item-url {
+  min-width: 0;
+  flex: 1;
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sess-item-url:hover {
+  text-decoration: underline;
+}
+
+/* ---------- 快捷标注视图（#annotate） ---------- */
+.annotate-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 640px;
+  padding: 6px 2px;
+}
+.form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.form-label {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.annotate-form .search-input,
+.annotate-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  padding: 9px 11px;
+  font-size: 13.5px;
+  font-family: inherit;
+}
+.annotate-textarea {
+  resize: vertical;
+  line-height: 1.5;
+}
+.annotate-form .search-input:focus,
+.annotate-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-soft);
+}
+.annotate-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+/* ---------- 关系图谱：全部标签导航 chips ---------- */
+.graph-chips {
+  margin-top: 14px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+}
+.graph-chips-title {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+.graph-chips-body {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.graph-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: var(--bg-secondary, var(--bg-primary));
+  color: var(--text-primary);
+  font-size: 12.5px;
+  cursor: pointer;
+  user-select: none;
+  transition: border-color .15s, background .15s;
+}
+.graph-chip:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+.graph-chip em {
+  font-style: normal;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+

@@ -70,6 +70,7 @@ function initDomRefs() {
   dom.importCsvBtn = document.getElementById("import-csv-btn");
   dom.importCsvFile = document.getElementById("import-csv-file");
   dom.searchInput = document.getElementById("search-input");
+  dom.searchFilter = document.getElementById("search-filter");
   dom.searchTitle = document.getElementById("search-title");
   dom.searchCount = document.getElementById("search-count");
   dom.searchResults = document.getElementById("search-results");
@@ -89,6 +90,43 @@ function initDomRefs() {
   dom.deleteConfirmDesc = document.getElementById("delete-confirm-desc");
   dom.deleteCancelBtn = document.getElementById("delete-cancel-btn");
   dom.deleteOkBtn = document.getElementById("delete-ok-btn");
+  dom.editModal = document.getElementById("edit-modal");
+  dom.editTitle = document.getElementById("edit-title");
+  dom.editUrl = document.getElementById("edit-url");
+  dom.editTags = document.getElementById("edit-tags");
+  dom.editNote = document.getElementById("edit-note");
+  dom.editError = document.getElementById("edit-error");
+  dom.editCancelBtn = document.getElementById("edit-cancel-btn");
+  dom.editSaveBtn = document.getElementById("edit-save-btn");
+  // P0/P1 新增视图与控件
+  dom.exportMdBtn = document.getElementById("export-md-btn");
+  dom.exportHtmlBtn = document.getElementById("export-html-btn");
+  dom.viewHighlights = document.getElementById("view-highlights");
+  dom.viewSessions = document.getElementById("view-sessions");
+  dom.viewSnapshots = document.getElementById("view-snapshots");
+  dom.manageTabs = document.getElementById("manage-tabs");
+  dom.manageTagsPane = document.getElementById("manage-tags-pane");
+  dom.manageGraphPane = document.getElementById("manage-graph-pane");
+  dom.tagGraph = document.getElementById("tag-graph");
+  dom.hlSearchInput = document.getElementById("hl-search-input");
+  dom.hlCount = document.getElementById("hl-count");
+  dom.hlList = document.getElementById("hl-list");
+  dom.hlMoreWrap = document.getElementById("hl-more-wrap");
+  dom.hlMoreBtn = document.getElementById("hl-more-btn");
+  dom.sessCount = document.getElementById("sess-count");
+  dom.sessList = document.getElementById("sess-list");
+  dom.snapCount = document.getElementById("snap-count");
+  dom.snapList = document.getElementById("snap-list");
+  dom.snapMoreWrap = document.getElementById("snap-more-wrap");
+  dom.snapMoreBtn = document.getElementById("snap-more-btn");
+  // 快捷标注视图（右键「添加为页签标注」跳转）
+  dom.viewAnnotate = document.getElementById("view-annotate");
+  dom.annTitle = document.getElementById("ann-title");
+  dom.annUrl = document.getElementById("ann-url");
+  dom.annNote = document.getElementById("ann-note");
+  dom.annTags = document.getElementById("ann-tags");
+  dom.annSaveBtn = document.getElementById("ann-save-btn");
+  dom.annCancelBtn = document.getElementById("ann-cancel-btn");
 }
 
 /* ================================================================== */
@@ -201,7 +239,7 @@ async function loadThemeConfig() {
 
 function getViewFromHash() {
   const h = location.hash.replace(/^#/, "").split("?")[0];
-  if (h === "search" || h === "manage") return h;
+  if (h === "search" || h === "manage" || h === "highlights" || h === "sessions" || h === "snapshots" || h === "annotate") return h;
   return "home";
 }
 
@@ -224,6 +262,10 @@ function showView(view) {
   dom.viewHome.hidden = view !== "home";
   dom.viewSearch.hidden = view !== "search";
   dom.viewManage.hidden = view !== "manage";
+  dom.viewHighlights.hidden = view !== "highlights";
+  dom.viewSessions.hidden = view !== "sessions";
+  dom.viewSnapshots.hidden = view !== "snapshots";
+  dom.viewAnnotate.hidden = view !== "annotate";
 
   const tabs = dom.navTabs.querySelectorAll(".nav-tab");
   tabs.forEach((t) => t.classList.toggle("active", t.dataset.view === view));
@@ -246,6 +288,14 @@ function showView(view) {
     } else {
       showTagList();
     }
+  } else if (view === "highlights") {
+    loadHighlights(true);
+  } else if (view === "sessions") {
+    loadSessions();
+  } else if (view === "snapshots") {
+    loadSnapshots(true);
+  } else if (view === "annotate") {
+    setupAnnotateView();
   }
 }
 
@@ -324,8 +374,18 @@ function createResultItem(item, opts = {}) {
     div.appendChild(timeEl);
   }
 
-  // 单条删除按钮（搜索 / 标签筛选结果使用）
+  // 单条编辑按钮 + 右键编辑（搜索 / 标签筛选结果使用）
   if (opts.showDelete && typeof item.id === "number") {
+    const editBtn = document.createElement("button");
+    editBtn.className = "result-item-edit";
+    editBtn.textContent = "✏️";
+    editBtn.title = "编辑这条标注";
+    editBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      showEditModal(item, opts.onDeleted);
+    });
+    div.appendChild(editBtn);
+
     const delBtn = document.createElement("button");
     delBtn.className = "result-item-delete";
     delBtn.textContent = "🗑";
@@ -337,12 +397,109 @@ function createResultItem(item, opts = {}) {
     div.appendChild(delBtn);
   }
 
+  // 右键单条记录：弹出编辑（阻止默认菜单）
+  div.addEventListener("contextmenu", (e) => {
+    if (typeof item.id !== "number") return;
+    e.preventDefault();
+    e.stopPropagation();
+    showEditModal(item, opts.onDeleted);
+  });
+
   // 点击打开网页
   div.addEventListener("click", () => {
     if (item.url) chrome.tabs.create({ url: item.url });
   });
 
   return div;
+}
+
+/* ---------- 编辑单条标注（编辑弹窗） ---------- */
+
+let editTarget = null; // { item, onSaved }
+
+function showEditModal(item, onSaved) {
+  editTarget = { item, onSaved };
+  // 先用列表已知内容预填（标签/标题/网址完整；备注可能只是前100字摘要）
+  dom.editTitle.value = item.title || "";
+  dom.editUrl.value = item.url || "";
+  dom.editTags.value = Array.isArray(item.tags) && item.tags.length > 0 ? item.tags.join(", ") : "";
+  dom.editNote.value = item.note || item.notePreview || "";
+  dom.editError.hidden = true;
+  dom.editError.textContent = "";
+  dom.editModal.hidden = false;
+  dom.editUrl.focus();
+
+  // 异步加载完整原文（备注等可能被截断），回来后补全输入框，方便对照修改
+  loadFullAnnotation(item).then((full) => {
+    if (full) {
+      dom.editTitle.value = full.title || "";
+      dom.editUrl.value = full.url || "";
+      dom.editTags.value = Array.isArray(full.tags) && full.tags.length > 0 ? full.tags.join(", ") : "";
+      dom.editNote.value = full.note || "";
+    }
+  });
+}
+
+/** 按 url 读取完整标注记录（失败返回 null，保持预填内容） */
+async function loadFullAnnotation(item) {
+  if (!item || !item.url) return null;
+  try {
+    const resp = await sendAction({ action: "get", url: item.url }, "加载原文");
+    if (resp.success && resp.data && resp.data.annotation) {
+      return resp.data.annotation;
+    }
+  } catch (err) { /* 保持预填内容 */ }
+  return null;
+}
+
+function hideEditModal() {
+  dom.editModal.hidden = true;
+  editTarget = null;
+}
+
+async function saveEdit() {
+  if (!editTarget) return;
+  const target = editTarget;
+
+  const url = dom.editUrl.value.trim();
+  if (!url) {
+    showEditError("网址不能为空");
+    return;
+  }
+  const title = dom.editTitle.value.trim();
+  const tags = dom.editTags.value
+    .split(/[,，]/)
+    .map((t) => t.trim())
+    .filter((t) => t.length > 0);
+  const note = dom.editNote.value;
+
+  showStatus("正在保存...", "info", 0);
+  const resp = await sendAction(
+    { action: "updateAnnotation", annotationId: target.item.id, url, title, tags, note },
+    "编辑标注"
+  );
+
+  if (resp.success) {
+    hideEditModal();
+    showStatus("已保存修改", "success");
+    if (typeof target.onSaved === "function") target.onSaved();
+  } else if (resp.errorCode === "URL_CONFLICT") {
+    showEditError(resp.error || "该网址已有其他标注");
+  } else if (resp.errorCode === "TAG_NAME_INVALID" || resp.errorCode === "TAG_NAME_CONFLICT") {
+    showEditError(resp.error || "标签名称不合法");
+  } else if (resp.errorCode === "ANNOTATION_NOT_FOUND") {
+    hideEditModal();
+    showStatus(resp.error || "记录不存在，可能已被删除", "error", 0);
+    if (typeof target.onSaved === "function") target.onSaved();
+  } else {
+    hideEditModal();
+    handleCommonError(resp);
+  }
+}
+
+function showEditError(msg) {
+  dom.editError.textContent = msg;
+  dom.editError.hidden = false;
 }
 
 function renderEmpty(container, text) {
@@ -535,7 +692,7 @@ async function doSearch(reset = false) {
   dom.searchCount.textContent = "";
 
   const resp = await sendAction(
-    { action: "search", query, limit: DEFAULT_LIMIT, offset: state.searchOffset },
+    { action: "search", query, fields: dom.searchFilter.value, limit: DEFAULT_LIMIT, offset: state.searchOffset },
     "搜索"
   );
 
@@ -757,6 +914,14 @@ async function confirmDelete() {
   const target = pendingDelete;
   hideDeleteConfirm();
 
+  // 通用确认（高亮 / 会话 / 快照删除）
+  if (target.type === "custom") {
+    if (typeof target.onOk === "function") {
+      await target.onOk();
+    }
+    return;
+  }
+
   if (target.type === "tag") {
     showStatus("正在删除...", "info", 0);
     const resp = await sendAction({ action: "deleteTag", tagId: target.tag.id }, "删除标签");
@@ -785,6 +950,14 @@ async function confirmDelete() {
   }
 }
 
+/** 通用确认弹窗（高亮 / 会话 / 快照删除复用，四态均有 confirm 保护）。 */
+function showCustomConfirm(title, desc, onOk) {
+  pendingDelete = { type: "custom", onOk };
+  dom.deleteConfirmTitle.textContent = title;
+  dom.deleteConfirmDesc.textContent = desc;
+  dom.deleteConfirm.hidden = false;
+}
+
 /* ================================================================== */
 /* 事件绑定                                                            */
 /* ================================================================== */
@@ -808,6 +981,7 @@ function bindEvents() {
   dom.searchInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") doSearch(true);
   });
+  dom.searchFilter.addEventListener("change", () => doSearch(true));
   dom.searchMoreBtn.addEventListener("click", onSearchMore);
 
   // 标签管理
@@ -818,13 +992,502 @@ function bindEvents() {
   dom.deleteCancelBtn.addEventListener("click", hideDeleteConfirm);
   dom.deleteOkBtn.addEventListener("click", confirmDelete);
 
+  // 编辑标注弹窗
+  dom.editCancelBtn.addEventListener("click", hideEditModal);
+  dom.editSaveBtn.addEventListener("click", saveEdit);
+
+  // ===== P0/P1 新增功能绑定 =====
+  dom.exportMdBtn.addEventListener("click", () => exportDocuments("md"));
+  dom.exportHtmlBtn.addEventListener("click", () => exportDocuments("html"));
+
+  // 高亮管理
+  dom.hlSearchInput.addEventListener("input", () => loadHighlights(true));
+  dom.hlMoreBtn.addEventListener("click", () => loadHighlights(false));
+
+  // 快照管理
+  dom.snapMoreBtn.addEventListener("click", () => loadSnapshots(false));
+
+  // 标签管理内 Tab（列表 / 图谱）
+  dom.manageTabs.querySelectorAll(".manage-tab").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const pane = btn.dataset.mtab;
+      dom.manageTabs.querySelectorAll(".manage-tab").forEach((b) => b.classList.toggle("active", b === btn));
+      dom.manageTagsPane.hidden = pane !== "tags";
+      dom.manageGraphPane.hidden = pane !== "graph";
+      if (pane === "graph" && dom.tagGraph.children.length === 0) {
+        loadTagGraph();
+      }
+    });
+  });
+
   // hash 变化
   window.addEventListener("hashchange", onHashChange);
 
   // Esc 关闭弹窗
   document.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && !dom.deleteConfirm.hidden) hideDeleteConfirm();
+    if (e.key === "Escape" && !dom.editModal.hidden) hideEditModal();
   });
+}
+
+/* ================================================================== */
+/* P0/P1 新功能：导出 / 高亮管理 / 会话管理 / 快照管理 / 标签图谱       */
+/* ================================================================== */
+
+/* ---------- 导出（Markdown / HTML） ---------- */
+
+function downloadText(filename, content) {
+  const blob = new Blob(["\uFEFF" + content], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, 200);
+}
+
+async function exportDocuments(kind) {
+  const label = kind === "md" ? "导出 Markdown" : "导出 HTML";
+  const resp = await sendAction({ action: kind === "md" ? "exportMarkdown" : "exportHtml" }, label);
+  if (!resp.success) {
+    showStatus(resp.error || label + "失败", "error");
+    return;
+  }
+  // host 响应统一 { success, data: { content, count } }
+  const data = resp.data || {};
+  if (!data.content || data.count === 0) {
+    showStatus("没有可导出的标注", "info");
+    return;
+  }
+  const date = new Date().toISOString().slice(0, 10);
+  downloadText(kind === "md" ? `webmarker-标注导出-${date}.md` : `webmarker-标注导出-${date}.html`, data.content);
+  showStatus(`${label}成功，共 ${data.count} 条`, "success");
+}
+
+/* ---------- 高亮管理 ---------- */
+
+let hlState = { offset: 0, total: 0, query: "" };
+
+function hlItemHtml(hl) {
+  const colorMap = {
+    yellow: { bg: "#fff59d", border: "#fbc02d" },
+    green: { bg: "#c8e6c9", border: "#66bb6a" },
+    blue: { bg: "#bbdefb", border: "#42a5f5" },
+    red: { bg: "#ffcdd2", border: "#ef5350" },
+    purple: { bg: "#e1bee7", border: "#ab47bc" },
+  };
+  const c = colorMap[hl.color] || colorMap.yellow;
+  const time = formatTime(hl.updatedAt);
+  return {
+    title: hl.quote.slice(0, 80) + (hl.quote.length > 80 ? "…" : ""),
+    url: hl.url,
+    meta: `${time} · ${hl.quote.length} 字`,
+    swatch: `<span class="hl-swatch" style="background:${c.bg};border:2px solid ${c.border};" title="${hl.color}"></span>`,
+  };
+}
+
+async function loadHighlights(reset) {
+  if (reset) {
+    hlState = { offset: 0, total: 0, query: dom.hlSearchInput.value.trim().toLowerCase() };
+    dom.hlList.innerHTML = "";
+  }
+  const resp = await sendAction({ action: "getHighlights", limit: 50, offset: hlState.offset }, "加载高亮");
+  if (!resp.success) {
+    if (hlState.offset === 0) dom.hlList.innerHTML = `<div class="empty-state">${resp.error || "加载失败"}</div>`;
+    return;
+  }
+  const items = (resp.data && resp.data.highlights) || [];
+  hlState.total = (resp.data && resp.data.total) || 0;
+  dom.hlCount.textContent = hlState.total > 0 ? String(hlState.total) : "";
+
+  if (hlState.offset === 0 && items.length === 0) {
+    dom.hlList.innerHTML = `<div class="empty-state"><div class="empty-icon">🖍</div>还没有高亮记录<br/>在网页上划选文字即可添加高亮</div>`;
+    dom.hlMoreWrap.hidden = true;
+    return;
+  }
+
+  const q = hlState.query;
+  const filtered = q ? items.filter((hl) =>
+    (hl.quote || "").toLowerCase().includes(q) ||
+    (hl.url || "").toLowerCase().includes(q)
+  ) : items;
+
+  filtered.forEach((hl) => {
+    const d = hlItemHtml(hl);
+    const item = document.createElement("div");
+    item.className = "result-item";
+    item.innerHTML = `
+      <div class="result-main">
+        <div class="result-item-title">${d.swatch} ${escapeHtml(d.title)}</div>
+        <div class="result-item-url">${escapeHtml(d.url)}</div>
+        <div class="result-item-time">${d.meta}</div>
+      </div>
+      <div class="result-actions">
+        <button class="btn btn-secondary btn-sm" data-act="open" title="打开页面并定位高亮">↗ 打开</button>
+        <button class="btn btn-secondary btn-sm" data-act="del" title="删除高亮">🗑</button>
+      </div>`;
+    item.querySelector('[data-act="open"]').addEventListener("click", () => {
+      chrome.runtime.sendMessage({ type: "WM_OPEN_HIGHLIGHT", url: hl.url, quote: hl.quote }, () => void chrome.runtime.lastError);
+    });
+    item.querySelector('[data-act="del"]').addEventListener("click", () => confirmDeleteHighlight(hl));
+    dom.hlList.appendChild(item);
+  });
+
+  dom.hlMoreWrap.hidden = hlState.offset + items.length >= hlState.total;
+  hlState.offset += items.length;
+}
+
+function confirmDeleteHighlight(hl) {
+  showCustomConfirm(
+    "删除高亮",
+    `确定删除该高亮吗？\n「${hl.quote.slice(0, 50)}${hl.quote.length > 50 ? "…" : ""}」`,
+    async () => {
+      const resp = await sendAction({ action: "deleteHighlight", highlightId: hl.id }, "删除高亮");
+      if (resp.success) {
+        showStatus("高亮已删除", "success");
+        loadHighlights(true);
+      } else {
+        showStatus(resp.error || "删除失败", "error");
+      }
+    }
+  );
+}
+
+/* ---------- 会话管理 ---------- */
+
+async function loadSessions() {
+  dom.sessList.innerHTML = "";
+  const resp = await sendAction({ action: "listSessions" }, "加载会话");
+  if (!resp.success) {
+    dom.sessList.innerHTML = `<div class="empty-state">${resp.error || "加载失败"}</div>`;
+    return;
+  }
+  const sessions = (resp.data && resp.data.sessions) || [];
+  dom.sessCount.textContent = sessions.length > 0 ? String(sessions.length) : "";
+  if (sessions.length === 0) {
+    dom.sessList.innerHTML = `<div class="empty-state"><div class="empty-icon">🗂</div>还没有保存的会话<br/>在弹出面板点击「保存会话」即可保存当前窗口标签页</div>`;
+    return;
+  }
+  for (const sess of sessions) {
+    const item = document.createElement("div");
+    item.className = "result-item";
+    item.innerHTML = `
+      <div class="result-main">
+        <div class="result-item-title">${escapeHtml(sess.name)}</div>
+        <div class="result-item-time">${formatTime(sess.createdAt)} · ${sess.itemCount} 个标签页</div>
+        <div class="sess-items" hidden></div>
+      </div>
+      <div class="result-actions">
+        <button class="btn btn-secondary btn-sm" data-act="expand" title="查看标签页">▶ 查看</button>
+        <button class="btn btn-secondary btn-sm" data-act="restore" title="重新打开全部标签页">↗ 恢复</button>
+        <button class="btn btn-secondary btn-sm" data-act="del" title="删除会话">🗑</button>
+      </div>`;
+    const itemsBox = item.querySelector(".sess-items");
+    item.querySelector('[data-act="expand"]').addEventListener("click", async () => {
+      if (!itemsBox.hidden) {
+        itemsBox.hidden = true;
+        return;
+      }
+      const r = await sendAction({ action: "getSessionItems", sessionId: sess.id }, "加载会话标签页");
+      itemsBox.innerHTML = "";
+      const list = (r.success && r.data && r.data.items) || [];
+      if (list.length === 0) {
+        itemsBox.innerHTML = `<div class="empty-state" style="padding:8px;">无标签页</div>`;
+      } else {
+        list.forEach((it) => {
+          const row = document.createElement("div");
+          row.className = "sess-item-row";
+          row.innerHTML = `
+            <a class="sess-item-url" href="${escapeHtml(it.url)}" target="_blank" rel="noopener">${escapeHtml(it.title || it.url)}</a>
+            <button class="btn btn-secondary btn-sm" data-act="delitem" title="删除该标签页">🗑</button>`;
+          row.querySelector('[data-act="delitem"]').addEventListener("click", () => confirmDeleteSessionItem(sess, it));
+          itemsBox.appendChild(row);
+        });
+      }
+      itemsBox.hidden = false;
+    });
+    item.querySelector('[data-act="restore"]').addEventListener("click", async () => {
+      const r = await sendAction({ action: "getSessionItems", sessionId: sess.id }, "恢复会话");
+      const list = (r.success && r.data && r.data.items) || [];
+      if (list.length === 0) {
+        showStatus("会话中没有标签页", "info");
+        return;
+      }
+      list.forEach((it) => {
+        if (it.url) chrome.tabs.create({ url: it.url, active: false });
+      });
+      showStatus(`已恢复 ${list.length} 个标签页`, "success");
+    });
+    item.querySelector('[data-act="del"]').addEventListener("click", () => {
+      showCustomConfirm(
+        "删除会话",
+        `确定删除会话「${sess.name}」（含 ${sess.itemCount} 个标签页）吗？`,
+        async () => {
+          const resp = await sendAction({ action: "deleteSession", sessionId: sess.id }, "删除会话");
+          if (resp.success) {
+            showStatus("会话已删除", "success");
+            loadSessions();
+          } else {
+            showStatus(resp.error || "删除失败", "error");
+          }
+        }
+      );
+    });
+    dom.sessList.appendChild(item);
+  }
+}
+
+function confirmDeleteSessionItem(session, item) {
+  showCustomConfirm(
+    "删除标签页",
+    `确定从会话「${session.name}」中删除该标签页吗？\n${item.title || item.url}`,
+    async () => {
+      const resp = await sendAction({ action: "deleteSessionItem", itemId: item.id }, "删除标签页");
+      if (resp.success) {
+        showStatus("标签页已删除", "success");
+        loadSessions();
+      } else {
+        showStatus(resp.error || "删除失败", "error");
+      }
+    }
+  );
+}
+
+/* ---------- 快照管理 ---------- */
+
+let snapState = { offset: 0, total: 0 };
+
+async function loadSnapshots(reset) {
+  if (reset) {
+    snapState = { offset: 0, total: 0 };
+    dom.snapList.innerHTML = "";
+  }
+  const resp = await sendAction({ action: "listSnapshots", limit: 20, offset: snapState.offset }, "加载快照");
+  if (!resp.success) {
+    if (snapState.offset === 0) dom.snapList.innerHTML = `<div class="empty-state">${resp.error || "加载失败"}</div>`;
+    return;
+  }
+  const items = (resp.data && resp.data.snapshots) || [];
+  snapState.total = (resp.data && resp.data.total) || 0;
+  dom.snapCount.textContent = snapState.total > 0 ? String(snapState.total) : "";
+
+  if (snapState.offset === 0 && items.length === 0) {
+    dom.snapList.innerHTML = `<div class="empty-state"><div class="empty-icon">📸</div>还没有快照<br/>右键页面选择「保存本页快照」即可存档</div>`;
+    dom.snapMoreWrap.hidden = true;
+    return;
+  }
+  items.forEach((snap) => {
+    const item = document.createElement("div");
+    item.className = "result-item";
+    item.innerHTML = `
+      <div class="result-main">
+        <div class="result-item-title">${escapeHtml(snap.title || snap.url)}</div>
+        <div class="result-item-url">${escapeHtml(snap.url)}</div>
+        <div class="result-item-time">${formatTime(snap.createdAt)}${snap.truncated ? " · ⚠ 已截断（页面过大）" : ""}</div>
+      </div>
+      <div class="result-actions">
+        <button class="btn btn-secondary btn-sm" data-act="view" title="查看快照">👁 查看</button>
+        <button class="btn btn-secondary btn-sm" data-act="del" title="删除快照">🗑</button>
+      </div>`;
+    item.querySelector('[data-act="view"]').addEventListener("click", async () => {
+      const r = await sendAction({ action: "getSnapshot", snapshotId: snap.id }, "读取快照");
+      if (!r.success || !(r.data && r.data.snapshot)) {
+        showStatus(r.error || "读取快照失败", "error");
+        return;
+      }
+      const doc = window.open("", "_blank");
+      if (!doc) {
+        showStatus("浏览器拦截了新窗口，请允许弹窗", "error");
+        return;
+      }
+      doc.document.open();
+      doc.document.write(r.data.snapshot.html || "<p>（空快照）</p>");
+      doc.document.close();
+    });
+    item.querySelector('[data-act="del"]').addEventListener("click", () => {
+      showCustomConfirm(
+        "删除快照",
+        `确定删除「${snap.title || snap.url}」的快照吗？`,
+        async () => {
+          const resp = await sendAction({ action: "deleteSnapshot", snapshotId: snap.id }, "删除快照");
+          if (resp.success) {
+            showStatus("快照已删除", "success");
+            loadSnapshots(true);
+          } else {
+            showStatus(resp.error || "删除失败", "error");
+          }
+        }
+      );
+    });
+    dom.snapList.appendChild(item);
+  });
+  dom.snapMoreWrap.hidden = snapState.offset + items.length >= snapState.total;
+  snapState.offset += items.length;
+}
+
+/* ---------- 快捷标注（右键「添加为页签标注」跳转 #annotate） ---------- */
+
+let annotateBound = false;
+
+function setupAnnotateView() {
+  // 从 hash 解析预填参数：#annotate?text=<选中文本>&url=<页面URL>
+  // URLSearchParams 已对 %XX 解码，直接用解析值，勿再 decodeURIComponent
+  const p = getHashParams();
+  const sel = p.text || "";
+  const url = p.url || "";
+  if (!annotateBound) {
+    annotateBound = true;
+    dom.annSaveBtn.addEventListener("click", async () => {
+      const targetUrl = (dom.annUrl.value || "").trim();
+      if (!targetUrl) {
+        showStatus("网址不能为空", "error");
+        return;
+      }
+      const note = dom.annNote.value.trim();
+      if (!note) {
+        showStatus("标注内容不能为空", "error");
+        return;
+      }
+      const tags = dom.annTags.value.split(/[,，]/).map((t) => t.trim()).filter(Boolean);
+      dom.annSaveBtn.disabled = true;
+      const resp = await sendAction(
+        { action: "save", url: targetUrl, title: dom.annTitle.value.trim(), note, tags },
+        "保存标注"
+      );
+      dom.annSaveBtn.disabled = false;
+      if (resp.success) {
+        showStatus("标注已保存", "success", 3000);
+        setTimeout(() => navigate("home"), 800);
+      } else {
+        showStatus(resp.error || "保存失败", "error");
+      }
+    });
+    dom.annCancelBtn.addEventListener("click", () => navigate("home"));
+  }
+  // 每次进入视图刷新预填内容
+  dom.annTitle.value = "";
+  dom.annUrl.value = url;
+  dom.annNote.value = sel;
+  dom.annTags.value = "";
+  dom.annSaveBtn.disabled = false;
+}
+
+/* ---------- 标签关系图谱 ---------- */
+
+async function loadTagGraph() {
+  dom.tagGraph.innerHTML = `<div class="empty-state">正在生成图谱…</div>`;
+  const resp = await sendAction({ action: "getTagGraph" }, "生成图谱");
+  if (!resp.success) {
+    dom.tagGraph.innerHTML = `<div class="empty-state">${resp.error || "生成图谱失败"}</div>`;
+    return;
+  }
+  const nodes = (resp.data && resp.data.nodes) || [];
+  const edges = (resp.data && resp.data.edges) || [];
+  if (nodes.length === 0) {
+    dom.tagGraph.innerHTML = `<div class="empty-state"><div class="empty-icon">🕸</div>还没有标签<br/>给标注添加标签后即可生成关系图谱</div>`;
+    return;
+  }
+  renderGraphSvg(nodes, edges);
+}
+
+function renderGraphSvg(nodes, edges) {
+  const W = 760;
+  const H = 400;
+  const cx = W / 2;
+  const cy = H / 2 - 10;
+
+  // 有关联的标签 = 出现在任意边中的节点；孤立标签（无任何共现边）单独列出
+  const edgeNodeIds = new Set();
+  edges.forEach((e) => { edgeNodeIds.add(String(e.source)); edgeNodeIds.add(String(e.target)); });
+  const related = nodes.filter((n) => edgeNodeIds.has(String(n.id)));
+  const isolated = nodes.filter((n) => !edgeNodeIds.has(String(n.id)));
+
+  // 图区：只有关联标签 >= 2 个时才画图（干净、不画孤立节点）
+  if (related.length >= 2) {
+    const sorted = related.slice().sort((a, b) => (b.count || 0) - (a.count || 0));
+    const maxCount = sorted.reduce((m, n) => Math.max(m, n.count || 1), 1);
+    // 环形布局
+    const R = Math.min(cx, cy) - 60;
+    const angleStep = (2 * Math.PI) / sorted.length;
+    const pos = new Map();
+    sorted.forEach((n, i) => {
+      const a = -Math.PI / 2 + angleStep * i;
+      pos.set(String(n.id), { x: cx + R * Math.cos(a), y: cy + R * Math.sin(a) });
+    });
+    const maxWeight = edges.reduce((m, e) => Math.max(m, e.weight || 1), 1);
+
+    let svg = `<svg viewBox="0 0 ${W} ${H}" class="graph-svg" xmlns="http://www.w3.org/2000/svg">`;
+    // 所有关联边都画，粗细/透明度按共现次数分级
+    edges.forEach((e) => {
+      const p1 = pos.get(String(e.source));
+      const p2 = pos.get(String(e.target));
+      if (!p1 || !p2) return;
+      const weight = e.weight || 1;
+      const width = 0.8 + (weight / maxWeight) * 3.0;
+      const opacity = 0.3 + (weight / maxWeight) * 0.5;
+      svg += `<line x1="${p1.x}" y1="${p1.y}" x2="${p2.x}" y2="${p2.y}" stroke="#94a3b8" stroke-opacity="${opacity.toFixed(2)}" stroke-width="${width.toFixed(2)}"/>`;
+    });
+    sorted.forEach((n) => {
+      const p = pos.get(String(n.id));
+      const r = 14 + (n.count / maxCount) * 16;
+      svg += `<g class="graph-node" data-tag-id="${n.id}" data-tag-name="${escapeAttr(n.name)}" style="cursor:pointer;">`;
+      svg += `<circle cx="${p.x}" cy="${p.y}" r="${r.toFixed(1)}" fill="#2563eb" fill-opacity="0.16" stroke="#2563eb" stroke-width="1.6"/>`;
+      svg += `<text x="${p.x}" y="${p.y + 4}" text-anchor="middle" font-size="12" fill="currentColor">${escapeHtml(n.name.length > 8 ? n.name.slice(0, 8) + "…" : n.name)}</text>`;
+      svg += `<title>${escapeHtml(n.name)}（${n.count} 条标注）</title>`;
+      svg += `</g>`;
+    });
+    svg += `</svg>`;
+    dom.tagGraph.innerHTML = svg;
+
+    // 点击节点 → 直接走现有 hash 直达筛选（manage?tagId=..&name=..），onHashChange 自动加载
+    dom.tagGraph.querySelectorAll(".graph-node").forEach((g) => {
+      g.addEventListener("click", () => {
+        const tagId = Number(g.dataset.tagId);
+        const name = g.dataset.tagName;
+        if (Number.isInteger(tagId) && tagId > 0 && name) {
+          location.hash = "manage?tagId=" + tagId + "&name=" + encodeURIComponent(name);
+        }
+      });
+    });
+  } else {
+    dom.tagGraph.innerHTML =
+      `<div class="empty-state"><div class="empty-icon">🕸</div>标签之间还没有共现关系<br/>给同一标注添加多个标签后，就会在这里连出关系线</div>`;
+  }
+
+  // 全部标签导航 chips（含孤立标签），点击同样直达筛选——保证每个标签都可点
+  const chips = nodes.slice().sort((a, b) => (b.count || 0) - (a.count || 0)).map((n) =>
+    `<span class="graph-chip" data-tag-id="${n.id}" data-tag-name="${escapeAttr(n.name)}" title="${escapeAttr(n.name)}（${n.count} 条标注）">${escapeHtml(n.name)}<em>${n.count || 0}</em></span>`
+  ).join("");
+  if (chips) {
+    const chipsBox = document.createElement("div");
+    chipsBox.className = "graph-chips";
+    chipsBox.innerHTML = `<div class="graph-chips-title">全部标签 · 点击查看标注</div><div class="graph-chips-body">${chips}</div>`;
+    dom.tagGraph.appendChild(chipsBox);
+    chipsBox.querySelectorAll(".graph-chip").forEach((c) => {
+      c.addEventListener("click", () => {
+        const id = Number(c.dataset.tagId);
+        const name = c.dataset.tagName;
+        if (Number.isInteger(id) && id > 0 && name) {
+          location.hash = "manage?tagId=" + id + "&name=" + encodeURIComponent(name);
+        }
+      });
+    });
+  }
+}
+
+function escapeHtml(text) {
+  if (!text) return "";
+  return String(text)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
+function escapeAttr(text) {
+  return escapeHtml(text);
 }
 
 /* ================================================================== */

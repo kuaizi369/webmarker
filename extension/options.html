@@ -25,7 +25,10 @@
     <nav class="nav-tabs" id="nav-tabs" aria-label="视图导航">
       <button class="nav-tab" data-view="home" title="首页概览">🏠 首页</button>
       <button class="nav-tab" data-view="search" title="搜索全部标注">🔍 搜索</button>
-      <button class="nav-tab" data-view="manage" title="标签管理">🏷 标签管理</button>
+      <button class="nav-tab" data-view="manage" title="标签管理">🏷 标签</button>
+      <button class="nav-tab" data-view="highlights" title="高亮管理">🖍 高亮</button>
+      <button class="nav-tab" data-view="sessions" title="会话管理">🗂 会话</button>
+      <button class="nav-tab" data-view="snapshots" title="快照管理">📸 快照</button>
     </nav>
 
     <!-- ==================== 视图容器 ==================== -->
@@ -42,8 +45,10 @@
           </div>
           <div class="io-actions">
             <button class="btn btn-secondary" id="export-csv-btn" type="button">⬇ 导出 CSV</button>
+            <button class="btn btn-secondary" id="export-md-btn" type="button">⬇ 导出 Markdown</button>
+            <button class="btn btn-secondary" id="export-html-btn" type="button">⬇ 导出 HTML</button>
             <button class="btn btn-secondary" id="import-csv-btn" type="button">⬆ 导入 CSV</button>
-            <span class="io-hint">导出为 CSV（Excel 可直接打开）；导入按 URL 合并（已存在则更新），导入前自动备份数据库</span>
+            <span class="io-hint">导出为 CSV（Excel 可直接打开）或 Markdown / HTML 文档；导入按 URL 合并（已存在则更新），导入前自动备份数据库</span>
             <input type="file" id="import-csv-file" accept=".csv,text/csv" hidden />
           </div>
         </div>
@@ -59,11 +64,17 @@
       <!-- 搜索视图 -->
       <section class="view" id="view-search" hidden>
         <div class="search-box">
+          <select id="search-filter" class="search-filter" title="搜索范围">
+            <option value="all" selected>全部</option>
+            <option value="title">标题</option>
+            <option value="tags">标签</option>
+            <option value="note">标注</option>
+          </select>
           <input
             type="text"
             id="search-input"
             class="search-input"
-            placeholder="输入关键词搜索 URL / 标题 / 备注 / 标签..."
+            placeholder="输入关键词搜索标注..."
             autocomplete="off">
         </div>
         <div class="view-section">
@@ -83,7 +94,11 @@
         <div class="breadcrumb" id="manage-breadcrumb" hidden>
           <button class="link-btn" id="back-to-tags">← 返回标签列表</button>
         </div>
-        <div class="view-section">
+        <div class="manage-tabs" id="manage-tabs">
+          <button class="nav-tab manage-tab active" data-mtab="tags" type="button">标签列表</button>
+          <button class="nav-tab manage-tab" data-mtab="graph" type="button">关系图谱</button>
+        </div>
+        <div class="view-section" id="manage-tags-pane">
           <div class="view-section-header">
             <span class="view-section-title" id="manage-title">全部标签</span>
             <span class="count-badge" id="manage-count"></span>
@@ -91,6 +106,91 @@
           <div class="tag-list" id="tag-list"><!-- 标签列表 / 筛选结果 --></div>
           <div class="load-more-wrap" id="manage-more-wrap" hidden>
             <button class="btn btn-secondary" id="manage-more-btn">加载更多</button>
+          </div>
+        </div>
+        <div class="view-section" id="manage-graph-pane" hidden>
+          <div class="view-section-header">
+            <span class="view-section-title">标签关系图谱</span>
+            <span class="io-hint">节点=标签（大小=标注数），连线=两标签在同一条标注上共现（线宽=共现次数），点击节点查看该标签标注</span>
+          </div>
+          <div id="tag-graph" class="tag-graph"><!-- SVG 图谱动态渲染 --></div>
+        </div>
+      </section>
+
+      <!-- 高亮管理视图 -->
+      <section class="view" id="view-highlights" hidden>
+        <div class="search-box">
+          <input
+            type="text"
+            id="hl-search-input"
+            class="search-input"
+            placeholder="输入关键词筛选高亮（标题 / 引用 / URL）..."
+            autocomplete="off">
+        </div>
+        <div class="view-section">
+          <div class="view-section-header">
+            <span class="view-section-title">全部高亮</span>
+            <span class="count-badge" id="hl-count"></span>
+          </div>
+          <div class="list" id="hl-list"><!-- 高亮列表 --></div>
+          <div class="load-more-wrap" id="hl-more-wrap" hidden>
+            <button class="btn btn-secondary" id="hl-more-btn">加载更多</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 会话管理视图 -->
+      <section class="view" id="view-sessions" hidden>
+        <div class="view-section">
+          <div class="view-section-header">
+            <span class="view-section-title">全部会话</span>
+            <span class="count-badge" id="sess-count"></span>
+          </div>
+          <div class="list" id="sess-list"><!-- 会话列表 --></div>
+        </div>
+      </section>
+
+      <!-- 快照管理视图 -->
+      <section class="view" id="view-snapshots" hidden>
+        <div class="view-section">
+          <div class="view-section-header">
+            <span class="view-section-title">全部快照</span>
+            <span class="count-badge" id="snap-count"></span>
+          </div>
+          <div class="list" id="snap-list"><!-- 快照列表 --></div>
+          <div class="load-more-wrap" id="snap-more-wrap" hidden>
+            <button class="btn btn-secondary" id="snap-more-btn">加载更多</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 快捷标注视图（右键「添加为页签标注」跳转） -->
+      <section class="view" id="view-annotate" hidden>
+        <div class="view-section">
+          <div class="view-section-header">
+            <span class="view-section-title">添加为页签标注</span>
+          </div>
+          <div class="annotate-form">
+            <div class="form-row">
+              <label class="form-label">标题</label>
+              <input type="text" id="ann-title" class="search-input" placeholder="页面标题" autocomplete="off">
+            </div>
+            <div class="form-row">
+              <label class="form-label">网址</label>
+              <input type="text" id="ann-url" class="search-input" readonly>
+            </div>
+            <div class="form-row">
+              <label class="form-label">标注内容</label>
+              <textarea id="ann-note" class="annotate-textarea" rows="6" placeholder="输入标注内容…"></textarea>
+            </div>
+            <div class="form-row">
+              <label class="form-label">标签（逗号分隔）</label>
+              <input type="text" id="ann-tags" class="search-input" placeholder="如：重要, 待办" autocomplete="off">
+            </div>
+            <div class="annotate-actions">
+              <button class="btn btn-primary" id="ann-save-btn">保存标注</button>
+              <button class="btn btn-secondary" id="ann-cancel-btn">返回首页</button>
+            </div>
           </div>
         </div>
       </section>
@@ -111,6 +211,36 @@
         <div class="modal-btn-row">
           <button class="btn btn-secondary" id="delete-cancel-btn">取消</button>
           <button class="btn btn-danger" id="delete-ok-btn">确认删除</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== 编辑标注弹窗 ==================== -->
+    <div class="modal-mask" id="edit-modal" hidden>
+      <div class="modal-card modal-card-edit">
+        <h3 class="modal-title">编辑标注</h3>
+        <div class="edit-form">
+          <label class="edit-field">
+            <span class="edit-label">标题</span>
+            <input type="text" id="edit-title" placeholder="网页标题">
+          </label>
+          <label class="edit-field">
+            <span class="edit-label">网址</span>
+            <input type="text" id="edit-url" placeholder="https://example.com">
+          </label>
+          <label class="edit-field">
+            <span class="edit-label">标签</span>
+            <input type="text" id="edit-tags" placeholder="多个标签用逗号分隔">
+          </label>
+          <label class="edit-field">
+            <span class="edit-label">标注</span>
+            <textarea id="edit-note" rows="4" placeholder="备注内容"></textarea>
+          </label>
+        </div>
+        <p class="modal-desc edit-error" id="edit-error" hidden></p>
+        <div class="modal-btn-row">
+          <button class="btn btn-secondary" id="edit-cancel-btn">取消</button>
+          <button class="btn btn-primary" id="edit-save-btn">保存</button>
         </div>
       </div>
     </div>
