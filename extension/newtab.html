@@ -10,6 +10,17 @@
   <!-- 背景层（背景图片 / 右键换背景） -->
   <div id="bgLayer" class="bg-layer" aria-hidden="true"></div>
 
+  <!-- 时钟小组件（顶部居中，点击切换 12/24 小时制；背景透明度自动适配，hover 可手动调节） -->
+  <div id="clockWidget" class="clock-widget" title="点击切换 12 / 24 小时制">
+    <div id="clockTime" class="clock-time">--:--</div>
+    <div id="clockDate" class="clock-date"></div>
+    <div id="clockLunar" class="clock-lunar"></div>
+    <div class="clock-alpha-ctl">
+      <span class="ctl-label">背景</span>
+      <input id="clockAlpha" type="range" min="0" max="0.8" step="0.05" value="0" title="时钟背景不透明度（0=透明）" />
+    </div>
+  </div>
+
   <!-- 全局错误条（host 未连接等） -->
   <div id="errorBar" class="error-bar" hidden></div>
 
@@ -31,9 +42,10 @@
     </nav>
 
     <main class="content">
-      <!-- ============ 主页视图（网络搜索框 + 匹配窗口，透薄毛玻璃贴合背景） ============ -->
+      <!-- ============ 主页视图（网络搜索框 + 匹配窗口，匹配内容从搜索框自然延展） ============ -->
       <div id="viewHome" class="view-home">
-        <div class="web-search">
+        <div id="searchSuggest" class="search-suggest">
+          <div class="web-search">
           <span class="drag-handle" title="按住拖动调整位置">
             <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor"><circle cx="2" cy="2" r="1.3"/><circle cx="8" cy="2" r="1.3"/><circle cx="2" cy="7" r="1.3"/><circle cx="8" cy="7" r="1.3"/><circle cx="2" cy="12" r="1.3"/><circle cx="8" cy="12" r="1.3"/></svg>
           </span>
@@ -74,6 +86,7 @@
             <span id="footTip">输入为空时自动收起</span>
           </div>
         </div>
+        </div><!-- /searchSuggest -->
       </div>
 
       <!-- ============ 标签墙视图（可拖动 / 可缩放面板，位置与尺寸记忆） ============ -->
@@ -95,6 +108,7 @@
   <!-- 右键菜单（背景操作） -->
   <div id="ctxMenu" class="ctx-menu" hidden></div>
 
+  <script src="lunar.js"></script>
   <script src="newtab.js"></script>
 </body>
 </html>

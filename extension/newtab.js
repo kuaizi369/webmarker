@@ -19,11 +19,14 @@
 /* 常量                                                               */
 /* ================================================================== */
 
-/** 背景图片文件名列表（extension/backgrounds/ 下；由 tools/sync-backgrounds.ps1 自动更新） */
-const BGM_LIST = ["cb31721e96c1d69eae39ada9ab04795f.jpg"];
+/** 背景图片文件名列表（extension/backgrounds/ 下；初始为内置默认，运行时可被「刷新图片库」替换并记忆） */
+let BGM_LIST = ["background_outrun.webp", "cb31721e96c1d69eae39ada9ab04795f.jpg"];
 
 /** 背景存储键（chrome.storage.local） */
 const BG_STORE_KEY = "newtabBg";
+
+/** 图片库列表存储键（「刷新图片库」后持久化，下次打开直接用最新列表） */
+const BG_LIST_STORE_KEY = "newtabBgList";
 
 /** 搜索框位置存储键 */
 const SEARCH_POS_KEY = "webSearchPos";
@@ -400,6 +403,7 @@ const WebSearchModule = {
   input: document.getElementById("webSearchInput"),
   btn: document.getElementById("webSearchBtn"),
   box: document.querySelector(".web-search"),
+  wrap: document.getElementById("searchSuggest"),   // 搜索框+匹配面板容器（拖动/pinned 作用于容器，面板自动跟随）
   engineBtn: document.getElementById("engineBtn"),
   engineBadge: document.getElementById("engineBadge"),
   engineName: document.getElementById("engineName"),
@@ -588,6 +592,7 @@ const WebSearchModule = {
       this.bmCount.hidden = true;
       this.localGroups.hidden = false;
       this.localEmpty.hidden = true;
+      this.syncPanel();   // 面板收起：移除搜索框与面板的连体样式
       return;
     }
     this.localResults.hidden = false;
@@ -660,33 +665,17 @@ const WebSearchModule = {
     openUrl(url);
   },
 
-  /** 固定到指定位置（脱离居中布局） */
+  /** 固定到指定位置（脱离居中布局，作用于容器，匹配面板自动跟随） */
   pin(left, top) {
-    this.box.classList.add("pinned");
-    this.box.style.left = left + "px";
-    this.box.style.top = top + "px";
+    this.wrap.classList.add("pinned");
+    this.wrap.style.left = left + "px";
+    this.wrap.style.top = top + "px";
     this.syncPanel();
   },
 
-  /** 结果面板与搜索框对齐：搜索框被拖走(fixed)时面板跟随其底部 +10px；未拖走时回到文档流 */
+  /** 匹配面板状态同步：面板为容器内绝对定位（top:100% 紧贴搜索框、同宽），pinned 时随容器自动跟随；此处仅切换 open（搜索框底角直角与面板连成一体） */
   syncPanel() {
-    const panel = this.localResults;
-    if (this.box.classList.contains("pinned")) {
-      const rect = this.box.getBoundingClientRect();
-      panel.style.position = "fixed";
-      panel.style.left = rect.left + "px";
-      panel.style.top = (rect.bottom + 10) + "px";
-      panel.style.width = this.box.offsetWidth + "px";
-      panel.style.maxWidth = this.box.offsetWidth + "px";
-      panel.style.margin = "0";
-    } else {
-      panel.style.position = "";
-      panel.style.left = "";
-      panel.style.top = "";
-      panel.style.width = "";
-      panel.style.maxWidth = "";
-      panel.style.margin = "";
-    }
+    this.wrap.classList.toggle("open", !this.localResults.hidden);
   },
 
   /** 鼠标左键拖动：容器空白/边框/把手区为手柄，输入/引擎按钮/搜索按钮上不触发 */
@@ -702,27 +691,27 @@ const WebSearchModule = {
       this._origLeft = rect.left;
       this._origTop = rect.top;
       this.pin(rect.left, rect.top);
-      this.box.classList.add("dragging");
+      this.wrap.classList.add("dragging");
       e.preventDefault();
     });
 
     document.addEventListener("mousemove", (e) => {
       if (!this._dragging) return;
-      const w = this.box.offsetWidth;
-      const h = this.box.offsetHeight;
+      const w = this.wrap.offsetWidth;
+      const h = this.wrap.offsetHeight;
       const left = Math.max(8, Math.min(this._origLeft + (e.clientX - this._startX), window.innerWidth - w - 8));
       const top = Math.max(8, Math.min(this._origTop + (e.clientY - this._startY), window.innerHeight - h - 8));
-      this.box.style.left = left + "px";
-      this.box.style.top = top + "px";
+      this.wrap.style.left = left + "px";
+      this.wrap.style.top = top + "px";
       this.syncPanel();   // 拖动中面板实时跟随
     });
 
     document.addEventListener("mouseup", () => {
       if (!this._dragging) return;
       this._dragging = false;
-      this.box.classList.remove("dragging");
-      const left = parseFloat(this.box.style.left) || this._origLeft;
-      const top = parseFloat(this.box.style.top) || this._origTop;
+      this.wrap.classList.remove("dragging");
+      const left = parseFloat(this.wrap.style.left) || this._origLeft;
+      const top = parseFloat(this.wrap.style.top) || this._origTop;
       this.syncPanel();
       try {
         chrome.storage.local.set({ [this.POS_KEY]: { left: left, top: top } });
@@ -1050,15 +1039,29 @@ const BackgroundModule = {
   layer: document.getElementById("bgLayer"),
 
   async init() {
-    // 读取上次背景并应用
+    // 读取上次背景与图片库列表并应用
     let saved = "";
     try {
-      const st = await chrome.storage.local.get(BG_STORE_KEY);
+      const st = await chrome.storage.local.get([BG_STORE_KEY, BG_LIST_STORE_KEY]);
       saved = st && st[BG_STORE_KEY] ? st[BG_STORE_KEY] : "";
+      // 优先使用「刷新图片库」后记忆的列表，否则用内置默认
+      const list = st && st[BG_LIST_STORE_KEY];
+      if (Array.isArray(list) && list.length > 0) BGM_LIST = list;
     } catch (err) {
       console.warn("[newtab] 读取背景配置失败:", err);
     }
+    // 首次使用/从未设置过：默认加载第一张背景，打开新标签页即可看到（无需手动换）
+    if (!saved && BGM_LIST.length > 0) {
+      saved = BGM_LIST[0];
+      try {
+        chrome.storage.local.set({ [BG_STORE_KEY]: saved });
+      } catch (err) {
+        console.warn("[newtab] 保存默认背景失败:", err);
+      }
+    }
     this.apply(saved);
+    // 通知时钟等组件：背景已就绪，可重新评估文字对比度
+    window.dispatchEvent(new CustomEvent("wm-bg-changed"));
   },
 
   /** 应用背景：文件名（BGM_LIST 中）→ 设置背景图；空 → 恢复默认 */
@@ -1105,6 +1108,40 @@ const BackgroundModule = {
     } catch (err) {
       console.warn("[newtab] 保存背景配置失败:", err);
     }
+    // 通知时钟等组件：背景已变化，重新评估文字对比度
+    window.dispatchEvent(new CustomEvent("wm-bg-changed"));
+  },
+
+  /** 刷新图片库：扫描本地 backgrounds 文件夹（host scanBackgrounds），更新列表并记忆；新图无需改代码/重载即可生效 */
+  async refreshLibrary() {
+    let resp;
+    try {
+      resp = await sendAction({ action: "scanBackgrounds" }, "刷新图片库");
+    } catch (err) {
+      showError("刷新图片库失败：" + (err && err.message ? err.message : "本地服务未连接"));
+      return;
+    }
+    if (!resp || !resp.success) {
+      showError((resp && resp.error) || "刷新图片库失败");
+      return;
+    }
+    const list = (resp.data && resp.data.backgrounds) || [];
+    if (list.length === 0) {
+      showError("图片库中没有图片（extension\\backgrounds 为空）");
+      return;
+    }
+    BGM_LIST = list;
+    try {
+      chrome.storage.local.set({ [BG_LIST_STORE_KEY]: list });
+    } catch (err) {
+      console.warn("[newtab] 保存图片库列表失败:", err);
+    }
+    // 当前背景不在新列表中时，自动切到第一张
+    if (!list.includes(this.current())) {
+      this.set(list[0]);
+    }
+    showError("图片库已刷新，共 " + list.length + " 张");
+    setTimeout(hideError, 2500);
   },
 };
 
@@ -1117,8 +1154,14 @@ const ContextMenuModule = {
   menu: document.getElementById("ctxMenu"),
 
   init() {
-    // 右键任意处：显示菜单（阻止浏览器默认菜单）
+    // 右键任意处：显示菜单（阻止浏览器默认菜单）。
+    // 例外：在输入框 / 文本域 / 可编辑元素内右键时放行浏览器原生编辑菜单
+    //（复制 / 粘贴 / 全选 / 撤销等全套功能）。
     document.addEventListener("contextmenu", (e) => {
+      const t = e.target;
+      if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)) {
+        return;
+      }
       e.preventDefault();
       this.show(e.clientX, e.clientY);
     });
@@ -1139,6 +1182,12 @@ const ContextMenuModule = {
       const div = document.createElement("div");
       div.className = "cm-item" + (opts && opts.disabled ? " disabled" : "");
       div.textContent = text;
+      if (opts && opts.tip) {
+        const tip = document.createElement("span");
+        tip.className = "cm-tooltip";
+        tip.textContent = opts.tip;
+        div.appendChild(tip);
+      }
       if (!(opts && opts.disabled) && onClick) {
         div.addEventListener("click", () => { this.hide(); onClick(); });
       }
@@ -1158,15 +1207,9 @@ const ContextMenuModule = {
 
     addItem("🎲 随机换背景", () => BackgroundModule.randomize(), { disabled: BGM_LIST.length === 0 });
     addItem("🗑 恢复默认背景", () => BackgroundModule.reset());
-
-    // 分隔 + 提示
-    const sep2 = document.createElement("div");
-    sep2.className = "cm-sep";
-    this.menu.appendChild(sep2);
-    const tip2 = document.createElement("div");
-    tip2.className = "cm-tip";
-    tip2.textContent = "提示：把图片放入「背景图片」文件夹，运行 extension\\tools\\sync-backgrounds.ps1 后重载扩展";
-    this.menu.appendChild(tip2);
+    addItem("🔄 刷新图片库", () => BackgroundModule.refreshLibrary(), {
+      tip: "把图片放入「背景图片」文件夹运行脚本，或直接放入 extension\\backgrounds 后点此刷新立即生效",
+    });
 
     this.menu.hidden = false;
 
@@ -1176,6 +1219,8 @@ const ContextMenuModule = {
     let px = x, py = y;
     if (px + mw > window.innerWidth - 4) px = Math.max(4, window.innerWidth - mw - 4);
     if (py + mh > window.innerHeight - 4) py = Math.max(4, window.innerHeight - mh - 4);
+    // 菜单靠近右边缘时，悬停提示改放菜单项左侧，避免溢出视口
+    this.menu.classList.toggle("tip-left", px + mw + 238 > window.innerWidth - 4);
     this.menu.style.left = px + "px";
     this.menu.style.top = py + "px";
   },
@@ -1189,7 +1234,178 @@ const ContextMenuModule = {
 /* 启动                                                               */
 /* ================================================================== */
 
+/* ================================================================== */
+/* 时钟小组件（P0-3） + 背景对比度自适应 + 透明度滑竿                   */
+/* ================================================================== */
+
+/** sRGB 分量 → 线性亮度分量（WCAG 相对亮度公式） */
+function lin(c) {
+  return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+}
+
+const ClockModule = {
+  id: "clock",
+  el: document.getElementById("clockWidget"),
+  timeEl: document.getElementById("clockTime"),
+  dateEl: document.getElementById("clockDate"),
+  lunarEl: document.getElementById("clockLunar"),
+  alphaInput: document.getElementById("clockAlpha"),
+  userAlpha: null, // 用户手动设置的背景不透明度（null=未设置，用自动值）
+  lastDateKey: null,
+  timer: null,
+  is24: true,
+
+  init() {
+    if (!this.el) return;
+    const saved = localStorage.getItem("wmClock24");
+    this.is24 = saved === null ? true : saved === "1";
+    this.el.addEventListener("click", () => {
+      this.is24 = !this.is24;
+      try {
+        localStorage.setItem("wmClock24", this.is24 ? "1" : "0");
+      } catch (err) {
+        // localStorage 不可用时仅本次生效
+      }
+      this.render();
+    });
+
+    // 背景不透明度滑竿：用户手动值优先于自动检测值
+    if (this.alphaInput) {
+      let savedAlpha = null;
+      try {
+        const v = localStorage.getItem("wmClockBgAlpha");
+        if (v !== null) savedAlpha = parseFloat(v);
+      } catch (err) {
+        // 忽略
+      }
+      if (savedAlpha !== null && !isNaN(savedAlpha)) {
+        this.userAlpha = Math.min(0.8, Math.max(0, savedAlpha));
+        this.setBgAlpha(this.userAlpha);
+        this.alphaInput.value = String(this.userAlpha);
+      }
+      this.alphaInput.addEventListener("input", (e) => {
+        e.stopPropagation();
+        const v = parseFloat(e.target.value);
+        if (isNaN(v)) return;
+        this.userAlpha = v;
+        try {
+          localStorage.setItem("wmClockBgAlpha", String(v));
+        } catch (err) {
+          // 忽略
+        }
+        this.setBgAlpha(v);
+      });
+      this.alphaInput.addEventListener("click", (e) => e.stopPropagation());
+      this.alphaInput.addEventListener("pointerdown", (e) => e.stopPropagation());
+    }
+
+    // 背景变化（换背景/恢复默认/首次加载）后重新检测对比度
+    window.addEventListener("wm-bg-changed", () => this.refreshBgCheck());
+
+    this.render();
+    this.timer = setInterval(() => this.render(), 1000);
+    // 首次加载自动检测（背景图可能异步，内部等待 onload）
+    this.refreshBgCheck();
+  },
+
+  setBgAlpha(v) {
+    if (this.el) {
+      this.el.style.setProperty("--clock-bg-alpha", String(Math.min(0.8, Math.max(0, v))));
+    }
+  },
+
+  /** 背景变化后重新评估：无手动值时自动调节背景不透明度保证文字可读 */
+  refreshBgCheck() {
+    if (this.userAlpha !== null) return; // 用户手动值优先，不覆盖
+    this.computeAutoAlpha().then((alpha) => {
+      if (alpha !== null && this.userAlpha === null) this.setBgAlpha(alpha);
+    });
+  },
+
+  /** 采样时钟位置背景图平均亮度，计算白字对比度，返回满足可读的最小不透明度（0-0.8，null=无法检测） */
+  async computeAutoAlpha() {
+    try {
+      const layer = document.getElementById("bgLayer");
+      const bg = layer ? layer.style.backgroundImage || "" : "";
+      const m = bg.match(/url\(["']?(.*?)["']?\)/);
+      if (!m || !m[1]) return 0; // 无背景图（默认色）→ 透明
+      const url = m[1];
+      const img = new Image();
+      img.src = url;
+      await new Promise((res, rej) => {
+        img.onload = res;
+        img.onerror = rej;
+      });
+      // 缩略采样（整图压到 120x80，取顶部中间区域近似时钟位置）
+      const cw = 120, ch = 80;
+      const canvas = document.createElement("canvas");
+      canvas.width = cw;
+      canvas.height = ch;
+      const ctx = canvas.getContext("2d", { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0, cw, ch);
+      const sx = Math.floor(cw * 0.5) - 15, sy = 4, sw = 30, sh = 40;
+      const data = ctx.getImageData(Math.max(0, sx), Math.max(0, sy), sw, sh).data;
+      let r = 0, g = 0, b = 0, n = 0;
+      for (let i = 0; i < data.length; i += 4) {
+        r += data[i]; g += data[i + 1]; b += data[i + 2]; n++;
+      }
+      if (n === 0) return 0;
+      const lum = 0.2126 * lin(r / n / 255) + 0.7152 * lin(g / n / 255) + 0.0722 * lin(b / n / 255);
+      // 白字（L=1.0）对比度 = (1.0+0.05)/(bl+0.05)；叠加黑底后背景亮度 ≈ lum*(1-a)
+      const target = 3.5; // 大字号时间文字可读目标（介于 WCAG 大字 3:1 与正文 4.5:1 之间）
+      let alpha = 0;
+      for (let a = 0; a <= 0.65; a += 0.05) {
+        const bl = lum * (1 - a);
+        if (1.05 / (bl + 0.05) >= target) { alpha = a; break; }
+      }
+      if (alpha === 0 && lum > 0.55) alpha = 0.65; // 纯亮底无档可达标：取最深档保底可读
+      return alpha;
+    } catch (err) {
+      return null;
+    }
+  },
+
+  render() {
+    const now = new Date();
+    let h = now.getHours();
+    let suffix = "";
+    if (!this.is24) {
+      suffix = h >= 12 ? " PM" : " AM";
+      h = h % 12 || 12;
+    }
+    this.timeEl.textContent =
+      String(h).padStart(2, "0") + ":" + String(now.getMinutes()).padStart(2, "0") +
+      ":" + String(now.getSeconds()).padStart(2, "0") + suffix;
+    this.dateEl.textContent =
+      now.getFullYear() + "年" + (now.getMonth() + 1) + "月" + now.getDate() + "日 星期" +
+      "日一二三四五六"[now.getDay()];
+
+    // 农历 + 节气（lunar.js 提供，寿星天文历权威数据；仅日期变化时重算，避免每秒重算开销）
+    if (this.lunarEl) {
+      const dateKey = now.getFullYear() + "-" + (now.getMonth() + 1) + "-" + now.getDate();
+      if (this.lastDateKey !== dateKey) {
+        this.lastDateKey = dateKey;
+        try {
+          if (typeof Solar !== "undefined") {
+            const lunar = Solar.fromYmd(now.getFullYear(), now.getMonth() + 1, now.getDate()).getLunar();
+            const gzYear = lunar.getYearInGanZhi();
+            const mCn = lunar.getMonthInChinese();
+            const dCn = lunar.getDayInChinese();
+            const jq = lunar.getJieQi() || "";
+            let txt = "农历" + gzYear + "年 " + mCn + "月" + dCn;
+            if (jq) txt += " · " + jq;
+            this.lunarEl.textContent = txt;
+          }
+        } catch (err) {
+          this.lunarEl.textContent = "";
+        }
+      }
+    }
+  },
+};
+
 app.registerModule(NavModule)
+  .registerModule(ClockModule)
   .registerModule(WebSearchModule)
   .registerModule(TagWallModule)
   .registerModule(SettingsModule)
